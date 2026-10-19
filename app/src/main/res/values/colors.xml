@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_bg">#FFFFFF</color>
+    <color name="kita_brand">#0A74D0</color>
+    <color name="kita_bg">#085DAD</color>
+    <color name="kita_text">#1F2430</color>
+</resources>

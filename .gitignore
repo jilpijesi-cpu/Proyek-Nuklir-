@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+*.apk
+
+# Kunci penandatanganan rilis: jangan pernah di-commit
+keystore.properties
+*.jks
+*.keystore
