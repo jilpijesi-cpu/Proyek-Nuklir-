@@ -84,9 +84,7 @@ internal fun MainActivity.showSetup() {
     val dlg = AlertDialog.Builder(this)
         .setTitle("Siapkan Termux")
         .setView(ScrollView(this).apply { addView(box) })
-        .setPositiveButton("Selesai") { _, _ ->
-            if (needsKey() && cfgKey().isEmpty()) showSettings()
-        }
+        .setPositiveButton("Selesai", null)
         .setNeutralButton("Periksa lagi", null)
         .create()
     fun recheck() {

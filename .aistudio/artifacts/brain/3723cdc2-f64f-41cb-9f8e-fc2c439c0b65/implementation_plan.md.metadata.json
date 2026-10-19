@@ -1,0 +1,6 @@
+{
+  "summary": "Rencana implementasi penyederhanaan halaman Pengaturan AgentApp 2.6 menjadi 4 kategori terstruktur (AI & Model, Eksekusi, Aplikasi, dan Lanjutan), lengkap dengan tombol tampil/sembunyikan API key, indikator status & uji koneksi AI, serta dialog konfirmasi peringatan untuk pengaturan berisiko.",
+  "updatedAt": "2026-10-19T12:16:59.523803437Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

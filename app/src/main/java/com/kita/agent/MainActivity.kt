@@ -569,12 +569,6 @@ class MainActivity : Activity() {
         perms.add("com.termux.permission.RUN_COMMAND")
         if (Build.VERSION.SDK_INT >= 33) perms.add("android.permission.POST_NOTIFICATIONS")
         requestPermissions(perms.toTypedArray(), 1)
-        if (!prefs.getBoolean("setup_seen", false)) {
-            prefs.edit().putBoolean("setup_seen", true).apply()
-            showSetup()
-        } else if (needsKey() && cfgKey().isEmpty()) {
-            showSettings()
-        }
     }
 
     internal val skipWords = listOf(
