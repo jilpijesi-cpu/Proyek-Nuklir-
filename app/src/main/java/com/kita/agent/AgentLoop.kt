@@ -401,9 +401,12 @@ internal fun MainActivity.agentLoop(
             // Keluaran gagal yang panjang dipadatkan; error yang sama berulang diberi peringatan ke model.
             val structured = parseToolResult(out)
             val command = c.args.optString("command")
+            val targetOrCmd = command.ifBlank { c.args.optString("path") }
             val verifyKind = verificationKind(c.name, command)
+            val seen = errTracker.record(out)
             var forModel = condenseFailure(out)
-            if (!structured.ok) {
+            val isDeniedOrBlocked = out.startsWith("Ditolak", ignoreCase = true) || out.startsWith("Diblokir", ignoreCase = true)
+            if (!structured.ok || isDeniedOrBlocked) {
                 val retryable = retryPolicy(c.name, command, structured)
                 val hint = when (structured.errorKind) {
                     ErrorKind.COMMAND_TIMEOUT -> "Cek proses dan hasil sebelum mengulang."
@@ -412,12 +415,13 @@ internal fun MainActivity.agentLoop(
                     ErrorKind.COMMAND_NOT_FOUND -> "Perintah atau file tidak ditemukan / tidak bisa dijalankan. Periksa nama dan path-nya, atau pasang paketnya (pkg install)."
                     else -> if (!retryable) "Jangan mengulang tanpa mengubah pendekatan." else "Boleh mencoba pendekatan jaringan lain."
                 }
-                forModel += "\n\n[Kategori error: ${structured.errorKind}. $hint]"
-                saveAgentCheckpoint(AgentCheckpoint(agentTaskId, userMsg, turns, c.name, "tool_failed", structured.errorKind.name))
+                val obstaclePlan = analyzeObstacle(c.name, targetOrCmd, out, seen.coerceAtLeast(1))
+                forModel += "\n\n[Kategori error: ${obstaclePlan.errorKind}. $hint]" +
+                    formatObstacleGuidance(obstaclePlan, seen.coerceAtLeast(1))
+                saveAgentCheckpoint(AgentCheckpoint(agentTaskId, userMsg, turns, c.name, "tool_failed", obstaclePlan.errorKind.name))
             } else if (verifyKind != VerificationKind.NONE) {
                 forModel += "\n\n[Verifikasi yang disarankan: ${verifyKind.name}. Pastikan hasil nyata sebelum menyatakan selesai.]"
             }
-            val seen = errTracker.record(out)
             if (seen in WARN_SAME_ERROR_AT until STOP_SAME_ERROR_AT) forModel += repeatWarning(seen)
             results.add(Pair(c, forModel))
             if (seen >= STOP_SAME_ERROR_AT) repeatStop = true

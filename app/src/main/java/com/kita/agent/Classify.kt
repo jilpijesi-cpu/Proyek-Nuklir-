@@ -61,6 +61,15 @@ internal fun unwrap(t0: List<String>): List<String> {
     return t
 }
 
+private fun unquoteToken(w: String) = w.replace("\"", "").replace("'", "").replace("\\", "")
+
+private fun isPureVersionCheck(name: String, t: List<String>): Boolean {
+    if (name !in VERSION_CMDS || t.size != 2) return false
+    val flag = t[1]
+    if ((name == "python" || name == "python3") && flag == "-v") return false
+    return flag in VERSION_FLAGS
+}
+
 /** Risiko dihitung aplikasi sendiri, jangan percaya klaim model. */
 fun classify(cmd: String): Risk {
     var worst = Risk.READ
@@ -72,33 +81,38 @@ fun classify(cmd: String): Risk {
     // Substitusi perintah / proses sulit diperiksa -> anggap berisiko
     if (cmd.contains("$(") || cmd.contains("`") || cmd.contains("<(") || cmd.contains(">(")) bump(Risk.WRITE)
 
-    // Pisahkan di | & ; baris baru dan tanda kurung/kurawal (termasuk & tunggal dan newline)
-    for (seg in c.split(Regex("""[|&;\n\r(){}]+"""))) {
-        var t = seg.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    // Pisahkan di | & ; ` baris baru dan tanda kurung/kurawal (termasuk & tunggal, backtick, dan newline)
+    for (seg in c.split(Regex("""[|&;\n\r(){}`]+"""))) {
+        var t = seg.trim().split(Regex("\\s+")).map { unquoteToken(it) }.filter { it.isNotEmpty() }
         if (t.isEmpty()) continue
-        val wrapped = t.firstOrNull()?.substringAfterLast('/') in WRAPPERS
+        val wrapped = t.firstOrNull()?.substringAfterLast('/')?.lowercase() in WRAPPERS
         if (wrapped) bump(Risk.WRITE)
         t = unwrap(t)
-        val name = t.firstOrNull()?.substringAfterLast('/') ?: continue
+        val rawName = t.firstOrNull()?.substringAfterLast('/') ?: continue
+        val lowerName = rawName.lowercase()
         when {
-            name in DELETE_CMDS -> bump(Risk.DELETE)
-            name in SHELLS -> {                                 // isi tidak bisa dipastikan
+            lowerName in DELETE_CMDS -> bump(Risk.DELETE)
+            lowerName in SHELLS -> {                            // isi tidak bisa dipastikan
                 bump(Risk.WRITE)
-                if (t.any { w -> w.split(Regex("[^A-Za-z]+")).any { it in DELETE_CMDS } }) bump(Risk.DELETE)
+                if (t.any { w -> w.split(Regex("[^A-Za-z]+")).any { it.lowercase() in DELETE_CMDS } }) bump(Risk.DELETE)
             }
-            name == "unzip" && ("-l" in t || "-p" in t) -> {}   // daftar isi zip / baca satu file ke layar
-            name == "unzip" && "-o" in t -> bump(Risk.DELETE)   // menimpa tanpa tanya
-            name == "find" && t.any { it == "-delete" } -> bump(Risk.DELETE)
-            name == "find" && t.any { it == "-exec" || it == "-execdir" || it == "-ok" || it == "-okdir" } -> {
+            rawName == "unzip" && ("-l" in t || "-p" in t) -> {} // daftar isi zip / baca satu file ke layar
+            lowerName == "unzip" && "-o" in t -> bump(Risk.DELETE) // menimpa tanpa tanya
+            lowerName == "find" && t.any { it == "-delete" } -> bump(Risk.DELETE)
+            lowerName == "find" && t.any { it == "-exec" || it == "-execdir" || it == "-ok" || it == "-okdir" } -> {
+                bump(Risk.WRITE)
                 val at = t.indexOfFirst { it == "-exec" || it == "-execdir" || it == "-ok" || it == "-okdir" }
                 val nested = t.drop(at + 1).takeWhile { it != ";" && it != "\\;" }
                 bump(classify(nested.joinToString(" ")))
             }
-            name == "find" && t.any { it in FIND_WRITE } -> bump(Risk.WRITE)
-            name == "tree" && t.any { it == "-o" || it.startsWith("--output") } -> bump(Risk.WRITE)
-            name in READ_CMDS -> {}
-            // Cek versi (java -version, gradle -v, android --version) hanya membaca
-            VERSION_CMDS.contains(name) && t.any { it in VERSION_FLAGS } -> {}
+            lowerName == "find" && t.any { it in FIND_WRITE } -> bump(Risk.WRITE)
+            lowerName == "tree" && t.any {
+                it == "-o" || it.startsWith("-o") || it.startsWith("--output") ||
+                    (it.startsWith("-") && !it.startsWith("--") && it.contains('o'))
+            } -> bump(Risk.WRITE)
+            rawName in READ_CMDS -> {}
+            // Cek versi murni (java -version, gradle -v, android --version) hanya membaca
+            isPureVersionCheck(rawName, t) -> {}
             else -> bump(Risk.WRITE)                            // tidak dikenal = hati-hati
         }
     }

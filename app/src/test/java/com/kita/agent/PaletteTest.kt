@@ -43,4 +43,11 @@ class PaletteTest {
         assertNotEquals(Risk.READ.color, Risk.WRITE.color)
         assertNotEquals(Risk.WRITE.color, Risk.DELETE.color)
     }
+
+    @Test
+    fun teksLiveAiLebihBesarDanKontrasKilauJelas() {
+        // Ukuran teks status live AI (18sp) harus lebih besar dari teks chat standar (16sp) dan daftar langkah (15sp).
+        org.junit.Assert.assertTrue(Live.TEXT_SIZE_SP > 16f)
+        assertNotEquals(Live.LINE_BASE, Live.LINE_SHINE)
+    }
 }

@@ -36,13 +36,17 @@ internal fun classifyApiError(code: Int, status: String, message: String): ApiEr
     return ApiErrorKind.FATAL
 }
 
+private val KEY_REDACT_RE = Regex("(sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9_-]{8,})")
+
+private fun redactSecrets(raw: String): String = KEY_REDACT_RE.replace(raw, "***")
+
 internal fun quotaMessage(code: Int, body: String): String =
     "Kuota API model ini habis" + (if (code > 0) " ($code)" else "") + ". Batas harian/kredit sudah terpakai, " +
-        "menunggu tidak membantu. Ganti model atau kunci API, atau cek https://ai.dev/rate-limit. Detail: " + body.take(200)
+        "menunggu tidak membantu. Ganti model atau kunci API, atau cek https://ai.dev/rate-limit. Detail: " + redactSecrets(body).take(200)
 
 /** Ubah error di dalam stream (setelah HTTP 200) menjadi exception yang tepat. */
 internal fun apiStreamException(code: Int, status: String, message: String): Exception {
-    val text = "API: " + message.take(300)
+    val text = "API: " + redactSecrets(message).take(300)
     return when (classifyApiError(code, status, message)) {
         ApiErrorKind.TRANSIENT -> TransientApiException(text)
         ApiErrorKind.QUOTA -> QuotaExhaustedException(quotaMessage(code, message))

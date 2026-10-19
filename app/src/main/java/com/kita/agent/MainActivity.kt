@@ -161,7 +161,8 @@ class MainActivity : Activity() {
             "Untuk bekerja lebih baik: pahami tujuan sebenarnya di balik permintaan; baca sebelum mengubah; " +
             "kalau gagal, pelajari penyebabnya lalu ubah pendekatan; periksa hasilmu sendiri sebelum menyatakan selesai; " +
             "laporkan apa adanya, termasuk yang belum terverifikasi atau tidak bisa kamu lakukan. " +
-            "Jawab dalam bahasa Indonesia yang ringkas dan jelas untuk layar HP, tanpa emoji."
+            "Jawab dalam bahasa Indonesia yang ringkas dan jelas untuk layar HP, tanpa emoji.\n\n" +
+            buildPersistenceDirective()
     }
 
     internal val desk =

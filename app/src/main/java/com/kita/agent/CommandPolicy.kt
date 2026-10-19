@@ -68,7 +68,7 @@ private val WRITERS = setOf(
     "chmod", "chown", "chgrp", "rm", "rmdir", "unlink", "curl", "wget", "rsync", "scp"
 )
 
-private val SEGMENT_SPLIT = Regex("""[|&;\n\r(){}]+""")
+private val SEGMENT_SPLIT = Regex("""[|&;\n\r(){}`]+""")
 private val NON_WORD = Regex("[^A-Za-z0-9_.-]+")
 private val WHITESPACE = Regex("\\s+")
 private val FORK_BOMB = Regex(""":\s*\(\s*\)\s*\{""")
@@ -79,7 +79,10 @@ private val REDIRECT_RE = Regex("""\d*>>?\s*([^\s&|;<>()]+)""")
 
 private fun unquote(w: String) = w.replace("\"", "").replace("'", "").replace("\\", "")
 
-private fun isBlockedName(n: String) = n in BLOCK_CMDS || n.startsWith("mkfs") || n.startsWith("termux-")
+private fun isBlockedName(n: String): Boolean {
+    val l = n.lowercase()
+    return l in BLOCK_CMDS || l.startsWith("mkfs") || l.startsWith("termux-")
+}
 
 private fun isRecursiveFlag(a: String) =
     a == "--recursive" || (a.startsWith("-") && !a.startsWith("--") && a.contains('R'))
@@ -91,9 +94,14 @@ private fun isPathLike(v: String) =
     v == "." || v == ".." || v.startsWith("/") || v.startsWith("~") ||
         v.contains('$') || v.contains('`') || v.split('/').any { it == ".." || it == "." }
 
-/** Argumen yang tampak seperti path. Nilai setelah "=" pada opsi (--output=/x) ikut diperiksa. */
+/** Argumen yang tampak seperti path. Nilai setelah "=" pada opsi (--output=/x) atau flag pendek melekat (-f/etc/passwd) ikut diperiksa. */
 private fun candidatePaths(args: List<String>): List<String> = args.mapNotNull { a ->
-    val v = if (a.startsWith("-")) (if (a.contains('=')) a.substringAfter('=') else null) else a
+    val v = when {
+        !a.startsWith("-") -> a
+        a.contains('=') -> a.substringAfter('=')
+        !a.startsWith("--") && a.length > 2 && isPathLike(a.substring(2)) -> a.substring(2)
+        else -> null
+    }
     if (v != null && isPathLike(v)) v else null
 }
 
@@ -126,7 +134,8 @@ internal fun isInside(path: String, workdir: String): Boolean {
 
 private fun isWriter(name: String, args: List<String>, segRisk: Risk): Boolean =
     segRisk == Risk.DELETE || name in WRITERS ||
-        (name == "sed" && args.any { it.startsWith("-i") || it == "--in-place" })
+        (name == "sed" && args.any { it.startsWith("-i") || it == "--in-place" }) ||
+        (name == "tree" && args.any { it == "-o" || it.startsWith("-o") || it.startsWith("--output") })
 
 /**
  * Nilai satu perintah untuk mode sandbox.
@@ -168,32 +177,33 @@ fun assessCommand(
         val words = seg.trim().split(WHITESPACE).map { unquote(it) }.filter { it.isNotEmpty() }
         if (words.isEmpty()) continue
         val t = unwrap(words)
-        val name = t.firstOrNull()?.substringAfterLast('/') ?: continue
+        val rawName = t.firstOrNull()?.substringAfterLast('/') ?: continue
+        val name = rawName.lowercase()
         val args = t.drop(1)
         val segRisk = classify(seg)
 
-        if (name !in SAFE_ALLOWLIST) allNamesSafe = false
+        if (rawName !in SAFE_ALLOWLIST) allNamesSafe = false
         if (name == "tail" && args.any { isFollowFlag(it) }) {
             neverEnds = true
             reasons.add("tail -f tidak berakhir sendiri")
         }
 
         // Isi shell (bash -c '...') tidak bisa dipastikan: periksa kata-katanya.
-        val nested = if (name in SHELL_NAMES) t.flatMap { it.split(NON_WORD) }.filter { it.isNotEmpty() } else emptyList()
+        val nested = if (name in SHELL_NAMES) t.flatMap { it.split(NON_WORD) }.map { it.lowercase() }.filter { it.isNotEmpty() } else emptyList()
 
-        if (isBlockedName(name)) block("perintah '$name' tidak diizinkan di sandbox")
+        if (isBlockedName(name)) block("perintah '$rawName' tidak diizinkan di sandbox")
         val nestedBad = nested.firstOrNull { isBlockedName(it) }
         if (nestedBad != null) block("'$nestedBad' di dalam shell tidak diizinkan di sandbox")
         if (name in PERM_CMDS && args.any { isRecursiveFlag(it) }) block("perubahan izin atau pemilik massal (-R) tidak diizinkan")
 
-        val gitSub = if (name == "git") args.firstOrNull { !it.startsWith("-") } else null
+        val gitSub = if (name == "git") args.firstOrNull { !it.startsWith("-") }?.lowercase() else null
         val isNet = name in NETWORK_CMDS || (gitSub != null && gitSub in GIT_NETWORK_SUB) || nested.any { it in NETWORK_CMDS }
         if (isNet) {
             network = true
-            reasons.add("Menyentuh jaringan: $name")
+            reasons.add("Menyentuh jaringan: $rawName")
         }
         if (name.startsWith("python") || name in INTERPRETERS) {
-            reasons.add("'$name' bisa memakai jaringan lewat skrip; tidak bisa dipastikan")
+            reasons.add("'$rawName' bisa memakai jaringan lewat skrip; tidak bisa dipastikan")
         }
 
         val paths = candidatePaths(args)
@@ -204,9 +214,9 @@ fun assessCommand(
         if (outside.isNotEmpty()) {
             val shown = outside.take(3).joinToString(", ")
             if (name == "cd" || name == "pushd") {
-                block("'$name' tidak boleh pindah ke luar workdir ($shown)")
+                block("'$rawName' tidak boleh pindah ke luar workdir ($shown)")
             } else if (isWriter(name, args, segRisk)) {
-                block("'$name' menulis atau menghapus di luar workdir ($shown)")
+                block("'$rawName' menulis atau menghapus di luar workdir ($shown)")
             } else {
                 outsideRead = true
                 reasons.add("Menyentuh path di luar workdir: $shown")
@@ -214,7 +224,7 @@ fun assessCommand(
         }
         // "cd" tanpa tujuan pindah ke home tamu, yaitu di luar workdir; perintah relatif sesudahnya jadi tidak terukur.
         if ((name == "cd" || name == "pushd") && args.none { !it.startsWith("-") }) {
-            block("'$name' tanpa tujuan pindah ke luar workdir")
+            block("'$rawName' tanpa tujuan pindah ke luar workdir")
         }
         if (name in RM_LIKE && paths.any { resolvePath(it, workdir, guestHome) == wd }) {
             block("tidak boleh menghapus workdir itu sendiri")

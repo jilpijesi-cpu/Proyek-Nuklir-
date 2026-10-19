@@ -1,8 +1,8 @@
 package com.kita.agent
 
-private val thinkBlock = Regex("<(think|thinking)>[\\s\\S]*?</\\1>", RegexOption.IGNORE_CASE)
-private val thinkOpen = Regex("<(think|thinking)>[\\s\\S]*$", RegexOption.IGNORE_CASE)
-private val responseTag = Regex("</?response>", RegexOption.IGNORE_CASE)
+private val thinkBlock = Regex("<(think|thinking)(?:\\s[^>]*)?>[\\s\\S]*?</(think|thinking)\\s*>", RegexOption.IGNORE_CASE)
+private val thinkOpen = Regex("<(think|thinking)(?:\\s[^>]*)?>[\\s\\S]*$", RegexOption.IGNORE_CASE)
+private val responseTag = Regex("</?response(?:\\s[^>]*)?>", RegexOption.IGNORE_CASE)
 private val tagTail = Regex("<[/a-zA-Z]{0,10}$")
 private val knownTags = listOf("<thinking>", "<think>", "</thinking>", "</think>", "<response>", "</response>")
 

@@ -20,6 +20,8 @@ internal fun MainActivity.sysText(): String {
     if (sandboxEnabled()) t += "\nMODE SANDBOX: run_command berjalan di dalam proot-distro (${sandboxConfig.distro}), bukan di Termux utama. Folder kerja: ${sandboxConfig.workdir}; tetap di dalamnya. Tidak ada akses /sdcard atau home Termux. Lampiran pengguna sudah disalin otomatis ke folder kerja dengan nama file yang sama. Jangan berasumsi alat build (JDK, Android SDK) sudah ada: cek dulu dengan perintah seperti java -version sebelum build. Perintah yang menyentuh jaringan selalu butuh persetujuan pengguna. Beberapa perintah (dd, mkfs, chmod -R, rm di luar workdir, dll.) diblokir. write_file tidak tersedia; tulis file lewat run_command."
     if (apkReMode()) t += "\n$APK_RE_SYSTEM_PROMPT"
     if (taskBrief.isNotBlank()) t += "\nPemahaman tugas saat ini: $taskBrief. Patuhi ini; jika ternyata keliru, koreksi dulu sebelum bertindak."
+    val progressCtx = formatTaskProgressContext(buildTaskProgressContext(taskBrief, runLog.steps))
+    if (progressCtx.isNotBlank()) t += "\n\n$progressCtx"
     return t
 }
 
@@ -89,8 +91,8 @@ internal fun MainActivity.compactIfNeeded(key: String) {
     val input = (if (start > 0) withSummary(old) else old) + Hist(
         0,
         "Ringkas percakapan di atas dalam bahasa Indonesia, maksimal 600 kata. Sertakan: tujuan pengguna, " +
-            "file/path penting dan perubahan yang sudah dibuat, keputusan, serta hal yang belum selesai. " +
-            "Jangan memanggil tool. Balas hanya dengan ringkasannya."
+            "langkah yang sudah berhasil, masalah yang ditemukan, file/path penting dan perubahan yang sudah dibuat, " +
+            "keputusan, serta pekerjaan yang belum selesai. Jangan memanggil tool. Balas hanya dengan ringkasannya."
     )
     val statusSnap = saveStatus()
     setStatus(IconView.ARCHIVE, "Meringkas percakapan lama")

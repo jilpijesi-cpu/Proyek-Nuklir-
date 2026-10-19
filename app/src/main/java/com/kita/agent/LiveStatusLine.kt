@@ -43,17 +43,20 @@ import kotlin.math.sin
 // Logika murni pewarnaan ada di TerminalLex.kt (teruji); berkas ini hanya tampilan.
 
 internal object Live {
+    // Ukuran teks status live AI diperbesar (18sp) agar lebih mencolok dibanding teks chat (16sp) dan daftar langkah (15sp).
+    const val TEXT_SIZE_SP = 18f
+
     // Baris status
     val ORANGE = 0xFFD97757.toInt()      // aksen hangat (titik "berpikir" dan ikon kerja)
     val TEXT_SHINE = 0xFF3F3E3B.toInt()  // pita gelap yang menyapu ke kanan (judul header status)
 
     // Baris status di feed: tanpa kartu/pengurung, langsung di atas latar biru chat.
-    // Dulu dasar teks putih 70% dengan huruf tipis: di area biru muda kontrasnya hanya ~1,7:1 sehingga samar.
-    val LINE_BASE = 0xD9FFFFFF.toInt()   // putih 85%: tetap tegas walau kilau belum lewat
-    val LINE_SHINE = 0xFFFFFFFF.toInt()  // pita putih penuh yang menyapu ke kanan
+    // Warna dasar perak-biru terang (90%) berpadu dengan pita kilau putih penuh (100%) sehingga sapuan cahaya tampak hidup dan kontras.
+    val LINE_BASE = 0xE6C6E4FF.toInt()   // perak-biru lembut: tegas di atas bayangan namun kontras saat disapu kilau putih
+    val LINE_SHINE = 0xFFFFFFFF.toInt()  // pita putih murni 100% yang menyapu ke kanan
     val LINE_TEXT = 0xFFFFFFFF.toInt()   // warna teks dasar (kilau bergerak di atasnya)
-    val LINE_CHEVRON = 0xE6FFFFFF.toInt()
-    val LINE_HALO = 0x4D00244D.toInt()   // biru tua 30%: bayangan tipis di bawah teks agar tepi huruf tajam
+    val LINE_CHEVRON = 0xF2FFFFFF.toInt()
+    val LINE_HALO = 0x59001E42.toInt()   // bayangan biru tua di bawah teks agar tepi huruf tajam dan menonjol
 
     // Terminal
     val BG = 0xFF0F172A.toInt()
@@ -647,19 +650,18 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
     private var availPx = 0 // lebar (px) yang tersedia untuk teks; dipakai memotong di batas kata
 
     private val iconSlot = FrameLayout(act)
-    // Gaya huruf: sans-serif medium (tegas tapi tetap halus), jarak antarhuruf sedikit dilonggarkan, warna dasar putih 85%
-    // dengan kilau putih penuh, dan bayangan biru tua tipis. Dulu: huruf tipis (light) putih 70% yang samar di atas biru muda.
+    // Gaya huruf live AI: lebih besar (18sp) dan tegas (bold-medium) dengan sapuan kilau kontras tinggi agar lebih mencolok dari teks lain.
     private val label = ShimmerText(act).apply {
-        textSize = 15.5f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        letterSpacing = 0.012f
+        textSize = Live.TEXT_SIZE_SP
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        letterSpacing = 0.014f
         shimmerBase = Live.LINE_BASE
         shimmerHi = Live.LINE_SHINE
-        shimmerMs = 2000L
+        shimmerMs = 1750L
         setTextColor(Live.LINE_TEXT)
         haloColor = Live.LINE_HALO
-        haloDy = act.dp(1) * 0.75f
-        setPadding(0, act.dp(1), 0, act.dp(1)) // ruang untuk bayangan; sama dengan oldLabel agar tidak bergeser saat pudar-silang
+        haloDy = act.dp(1).toFloat()
+        setPadding(0, act.dp(2), 0, act.dp(2)) // ruang untuk bayangan; sama dengan oldLabel agar tidak bergeser saat pudar-silang
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         alpha = 0f
@@ -668,11 +670,11 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
 
     // Teks lama yang memudar di tempat yang sama saat teks berganti (pudar-silang, tanpa bergeser).
     private val oldLabel = TextView(act).apply {
-        textSize = 15.5f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        letterSpacing = 0.012f
+        textSize = Live.TEXT_SIZE_SP
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        letterSpacing = 0.014f
         setTextColor(Live.LINE_BASE)
-        setPadding(0, act.dp(1), 0, act.dp(1))
+        setPadding(0, act.dp(2), 0, act.dp(2))
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         alpha = 0f
@@ -687,16 +689,16 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
     private val head = LinearLayout(act).apply {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = act.dp(40)
-        setPadding(act.dp(14), act.dp(4), act.dp(12), act.dp(4))
+        minimumHeight = act.dp(44)
+        setPadding(act.dp(14), act.dp(6), act.dp(12), act.dp(6))
         background = null
-        addView(iconSlot, LinearLayout.LayoutParams(act.dp(34), act.dp(30)))
-        addView(textBox, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = act.dp(6) })
-        addView(chevron, LinearLayout.LayoutParams(act.dp(20), act.dp(20)).apply { marginStart = act.dp(4) })
+        addView(iconSlot, LinearLayout.LayoutParams(act.dp(36), act.dp(32)))
+        addView(textBox, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = act.dp(8) })
+        addView(chevron, LinearLayout.LayoutParams(act.dp(22), act.dp(22)).apply { marginStart = act.dp(6) })
         setOnClickListener { toggle() }
         addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
             // Sisakan ruang untuk ikon dan panah; teks yang kepanjangan dipotong dengan "…".
-            val avail = (r - l) - paddingLeft - paddingRight - act.dp(34) - act.dp(6) - act.dp(20) - act.dp(4)
+            val avail = (r - l) - paddingLeft - paddingRight - act.dp(36) - act.dp(8) - act.dp(22) - act.dp(6)
             availPx = avail
             if (avail > 0 && label.maxWidth != avail) post {
                 label.maxWidth = avail
@@ -764,7 +766,7 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
         val sp = SpannableString(t)
         for (r in ranges) {
             sp.setSpan(TypefaceSpan("monospace"), r.first, r.last + 1, SPAN_FLAGS)
-            sp.setSpan(RelativeSizeSpan(0.94f), r.first, r.last + 1, SPAN_FLAGS)
+            sp.setSpan(RelativeSizeSpan(0.95f), r.first, r.last + 1, SPAN_FLAGS)
         }
         return sp
     }
@@ -786,8 +788,8 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
         } else {
             IconView(act, kind, tint).apply { working = kind == IconView.GEAR && breathe }
         }
-        val lp = if (kind == KIND_DOTS) FrameLayout.LayoutParams(act.dp(34), act.dp(22), Gravity.CENTER)
-        else FrameLayout.LayoutParams(act.dp(24), act.dp(24), Gravity.CENTER)
+        val lp = if (kind == KIND_DOTS) FrameLayout.LayoutParams(act.dp(36), act.dp(24), Gravity.CENTER)
+        else FrameLayout.LayoutParams(act.dp(26), act.dp(26), Gravity.CENTER)
         iconSlot.addView(v, lp)
         v.scaleX = 0.4f
         v.scaleY = 0.4f

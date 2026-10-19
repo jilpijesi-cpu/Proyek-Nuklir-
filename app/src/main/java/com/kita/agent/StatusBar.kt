@@ -17,14 +17,21 @@ import android.widget.TextView
 internal fun MainActivity.buildStatusRow() {
     statusLead = FrameLayout(this)
     statusTitle = ShimmerText(this).apply {
-        textSize = 14f
-        setTextColor(Palette.ON_BLUE)
-        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        textSize = Live.TEXT_SIZE_SP
+        setTextColor(Live.LINE_TEXT)
+        shimmerBase = Live.LINE_BASE
+        shimmerHi = Live.LINE_SHINE
+        shimmerMs = 1750L
+        haloColor = Live.LINE_HALO
+        haloDy = dp(1).toFloat()
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+        letterSpacing = 0.014f
+        setPadding(0, dp(2), 0, dp(2))
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         setShimmer(false)
     }
-    statusChevron = IconView(this, IconView.CHEVRON, Palette.ON_BLUE)
+    statusChevron = IconView(this, IconView.CHEVRON, Live.LINE_CHEVRON)
     statusDetail = TextView(this).apply {
         typeface = Typeface.MONOSPACE
         textSize = 12f
@@ -41,7 +48,7 @@ internal fun MainActivity.buildStatusRow() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(12), 0, dp(12))
-        addView(statusLead, LinearLayout.LayoutParams(dp(44), dp(26)))
+        addView(statusLead, LinearLayout.LayoutParams(dp(44), dp(28)))
         addView(statusTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
         addView(statusChevron, LinearLayout.LayoutParams(dp(22), dp(22)))
         setOnClickListener { toggleDetail() }
@@ -92,10 +99,10 @@ internal fun MainActivity.setStatus(kind: Int, title: String, detail: String = "
         }
         if (kind != leadKind) {
             statusLead.removeAllViews()
-            statusTitle.shimmerBase = Palette.ON_BLUE
-            statusTitle.shimmerHi = Live.TEXT_SHINE
+            statusTitle.shimmerBase = Live.LINE_BASE
+            statusTitle.shimmerHi = Live.LINE_SHINE
             if (kind == KIND_DOTS) {
-                statusLead.addView(DotsView(this), FrameLayout.LayoutParams(MATCH, MATCH))
+                statusLead.addView(OrbitDotsView(this, Live.ORANGE), FrameLayout.LayoutParams(dp(36), dp(24), Gravity.CENTER))
             } else {
                 statusLead.addView(
                     IconView(this, kind, accentFor(kind)).apply { working = kind != IconView.CLOCK },

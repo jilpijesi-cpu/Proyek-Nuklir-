@@ -225,11 +225,12 @@ internal fun summaryFromAnswer(text: String, max: Int = 150): String {
 }
 
 /**
- * True bila ada perubahan file yang belum diikuti verifikasi yang berhasil (build, apktool b, apksigner verify, dll).
- * Dipakai agar laporan tidak menyatakan "Berhasil" untuk perubahan yang belum dibuktikan.
+ * True bila ada perubahan file kode yang belum diikuti verifikasi yang berhasil (build, apktool b, apksigner verify, dll).
+ * Dipakai agar laporan tidak menyatakan "Berhasil" untuk perubahan kode yang belum dibuktikan,
+ * namun tidak salah menandai perubahan dokumentasi/teks non-kode sebagai UNVERIFIED.
  */
 internal fun unverifiedChange(steps: List<StepRecord>): Boolean {
-    val lastWrite = steps.indexOfLast { it.tool == "write_file" && it.state == StepState.OK }
+    val lastWrite = steps.indexOfLast { modifiedCodeTarget(it) != null }
     if (lastWrite < 0) return false
     val lastVerifyOk = steps.indexOfLast { it.kind == ActivityKind.BUILD && it.state == StepState.OK }
     return lastVerifyOk < lastWrite
@@ -274,8 +275,12 @@ internal fun buildReport(log: RunLog, totalMs: Long): Report? {
     }
 
     val changes = ArrayList<String>()
-    val files = steps.filter { it.tool == "write_file" && it.state == StepState.OK }
-        .map { it.target.substringAfterLast('/') }.filter { it.isNotEmpty() }.distinct()
+    val files = steps.mapNotNull { s ->
+        when {
+            s.tool == "write_file" && s.state == StepState.OK -> s.target.substringAfterLast('/')
+            else -> modifiedCodeTarget(s)?.substringAfterLast('/')
+        }
+    }.filter { it.isNotEmpty() }.distinct()
     if (files.isNotEmpty()) {
         val shown = files.take(3).joinToString(", ")
         changes.add("Mengubah ${files.size} file: $shown" + if (files.size > 3) " (+${files.size - 3} lagi)" else "")

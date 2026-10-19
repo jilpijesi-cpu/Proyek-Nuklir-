@@ -538,15 +538,28 @@ class ShimmerText(ctx: Context) : TextView(ctx) {
         }
         if (active && width > 0) {
             val w = width.toFloat()
+            val bandW = maxOf(w * 0.75f, 170f * resources.displayMetrics.density)
+            val midColor = blendArgb(shimmerBase, shimmerHi, 0.55f)
             val sh = shader ?: LinearGradient(
-                0f, 0f, w * 0.6f, 0f,
-                intArrayOf(shimmerBase, shimmerHi, shimmerBase), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+                0f, 0f, bandW, 0f,
+                intArrayOf(shimmerBase, midColor, shimmerHi, midColor, shimmerBase),
+                floatArrayOf(0f, 0.28f, 0.5f, 0.72f, 1f),
+                Shader.TileMode.CLAMP
             ).also { shader = it }
-            m.setTranslate(-w * 0.6f + t * w * 1.8f, 0f)
+            m.setTranslate(-bandW + t * (w + bandW * 1.35f), 0f)
             sh.setLocalMatrix(m)
             paint.shader = sh
         }
         super.onDraw(c)
+    }
+
+    private fun blendArgb(c1: Int, c2: Int, ratio: Float): Int {
+        val f = ratio.coerceIn(0f, 1f)
+        val a = ((c1 ushr 24) + (((c2 ushr 24) - (c1 ushr 24)) * f)).toInt()
+        val r = (((c1 shr 16) and 0xFF) + ((((c2 shr 16) and 0xFF) - ((c1 shr 16) and 0xFF)) * f)).toInt()
+        val g = (((c1 shr 8) and 0xFF) + ((((c2 shr 8) and 0xFF) - ((c1 shr 8) and 0xFF)) * f)).toInt()
+        val b = ((c1 and 0xFF) + (((c2 and 0xFF) - (c1 and 0xFF)) * f)).toInt()
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 }
 
