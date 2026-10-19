@@ -17,6 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Perbaiki izin eksekusi gradlew
+        working-directory: ${{ github.workspace }}
+        run: |
+          chmod +x ./gradlew
+          if [ -d .git ]; then
+            git update-index --chmod=+x gradlew || true
+          fi
+
       - name: Siapkan JDK 17
         uses: actions/setup-java@v4
         with:
@@ -32,8 +40,28 @@ jobs:
       - name: Siapkan Gradle (cache)
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Siapkan debug keystore (jika belum ada di runner)
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkeypair -v \
+                -keystore debug.keystore \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+          fi
+
       - name: Siapkan kunci penandatanganan rilis (opsional)
         if: ${{ env.KEYSTORE_BASE64 != '' }}
+        working-directory: ${{ github.workspace }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > release.jks
           {
@@ -44,10 +72,20 @@ jobs:
           } > keystore.properties
 
       - name: Lint, tes unit, dan build debug + rilis
-        run: ./gradlew lint testDebugUnitTest assembleDebug assembleRelease --no-daemon
+        working-directory: ${{ github.workspace }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew lint testDebugUnitTest assembleDebug assembleRelease --no-daemon
+
+      - name: Verifikasi keberadaan APK debug
+        working-directory: ${{ github.workspace }}
+        run: |
+          ls -lh app/build/outputs/apk/debug/
+          test -s app/build/outputs/apk/debug/app-debug.apk
 
       - name: Verifikasi tanda tangan dan checksum rilis
         if: ${{ env.KEYSTORE_BASE64 != '' }}
+        working-directory: ${{ github.workspace }}
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "$APK"
@@ -56,6 +94,7 @@ jobs:
 
       - name: Hapus material penandatanganan dari runner
         if: ${{ always() }}
+        working-directory: ${{ github.workspace }}
         run: rm -f release.jks keystore.properties
 
       - name: Unggah laporan lint
@@ -71,6 +110,7 @@ jobs:
         with:
           name: agentapp-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
 
       - name: Unggah APK rilis
         uses: actions/upload-artifact@v4
