@@ -43,20 +43,21 @@ import kotlin.math.sin
 // Logika murni pewarnaan ada di TerminalLex.kt (teruji); berkas ini hanya tampilan.
 
 internal object Live {
-    // Ukuran teks status live AI diperbesar (18sp) agar lebih mencolok dibanding teks chat (16sp) dan daftar langkah (15sp).
-    const val TEXT_SIZE_SP = 18f
+    // Ukuran teks status live AI (17.5sp): sedikit lebih besar dari teks chat (16sp) dan daftar langkah (15sp),
+    // dengan proporsi ketebalan garis huruf yang ramping 1:1 sesuai video acuan.
+    const val TEXT_SIZE_SP = 17.5f
 
-    // Baris status
-    val ORANGE = 0xFFD97757.toInt()      // aksen hangat (titik "berpikir" dan ikon kerja)
-    val TEXT_SHINE = 0xFF3F3E3B.toInt()  // pita gelap yang menyapu ke kanan (judul header status)
+    // Baris status (diukur dari piksel video live_chat_streaming_ai-1: titik terakota #D97757, rasio kontras lembah-puncak 28%..100%)
+    val ORANGE = 0xFFD97757.toInt()      // titik mengorbit terakota hangat (#CF7561..#DF744D pada video)
+    val TEXT_SHINE = 0xFF3F3E3B.toInt()  // warna puncak pada latar terang
 
-    // Baris status di feed: tanpa kartu/pengurung, langsung di atas latar biru chat.
-    // Warna dasar perak-biru terang (90%) berpadu dengan pita kilau putih penuh (100%) sehingga sapuan cahaya tampak hidup dan kontras.
-    val LINE_BASE = 0xE6C6E4FF.toInt()   // perak-biru lembut: tegas di atas bayangan namun kontras saat disapu kilau putih
-    val LINE_SHINE = 0xFFFFFFFF.toInt()  // pita putih murni 100% yang menyapu ke kanan
-    val LINE_TEXT = 0xFFFFFFFF.toInt()   // warna teks dasar (kilau bergerak di atasnya)
-    val LINE_CHEVRON = 0xF2FFFFFF.toInt()
-    val LINE_HALO = 0x59001E42.toInt()   // bayangan biru tua di bawah teks agar tepi huruf tajam dan menonjol
+    // Baris status di atas latar chat: puncak 100% putih tegas, lembah gelombang 30% putih lembut (rasio 0.28..1.0 sesuai video),
+    // tanpa bayangan gelap di bawahnya agar lembah gelombang memudar mulus ke latar seperti di video.
+    val LINE_BASE = 0x4DFFFFFF.toInt()   // lembah gelombang (~30% opasitas, sesuai kontras minimum di video)
+    val LINE_SHINE = 0xFFFFFFFF.toInt()  // puncak gelombang (100% opasitas tegas)
+    val LINE_TEXT = 0xFFFFFFFF.toInt()   // warna teks dasar
+    val LINE_CHEVRON = 0xB3FFFFFF.toInt()// panah '>' ramping (~70% opasitas, sesuai min_r=107..111 pada video)
+    val LINE_HALO = 0                    // tanpa bayangan bawah agar bagian redup gelombang benar-benar memudar 1:1 seperti video
 
     // Terminal
     val BG = 0xFF0F172A.toInt()
@@ -99,33 +100,35 @@ internal object Live {
 
 private const val SPAN_FLAGS = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
 
-// Pergantian teks status: teks lama hilang cepat dulu, teks baru menyusul sesaat kemudian (tidak bertumpuk jadi bayangan kabur).
-private const val FADE_OUT_MS = 110L
-private const val FADE_IN_DELAY_MS = 60L
-private const val FADE_IN_MS = 230L
+// Kemunculan teks status pertama kali setelah fase titik-saja (00:07..00:11 pada video acuan).
+private const val FIRST_FADE_IN_MS = 160L
 
-// ------------------------------------------------------------------ Ikon "berpikir": tiga titik mengorbit
+// ------------------------------------------------------------------ Ikon "berpikir": tiga titik mengorbit 3D
 
 /**
- * Tiga titik hangat yang mengorbit pada elips mendatar: yang di depan lebih besar, yang di belakang lebih kecil, kecepatannya
- * sedikit tidak rata sehingga kadang bertumpuk dan kadang merenggang (seperti ikon berpikir pada video acuan).
- * Berhenti sendiri saat lepas dari layar.
+ * Tiga titik hangat yang mengorbit dalam bidang 3D sesuai pengukuran frame-demi-frame video `live_chat_streaming_ai-1`:
+ * - Rentang orbit horizontal rx = 7.0dp (total bentang ~52px @ 3x), siklus putar 1650ms (~0.55 dtk per titik lewat depan).
+ * - Kemiringan vertikal bidang orbit (pitch) berayun sinusoidal dengan siklus 3700ms hingga ±3.8dp (bentang vertikal ~30px @ 3x):
+ *   saat kemiringan melintas 0, ketiga titik sejajar mendatar (`• • •`); saat miring maksimum, titik depan dan belakang
+ *   terpisah secara vertikal (`: •` / `. • .`) persis seperti pada detik 00:08, 00:11, 00:23, 00:28, 00:34, 00:43 di video.
+ * - Jari-jari titik mengikuti kedalaman: belakang r=1.32dp (4.0px @ 3x, alpha=210) hingga depan r=2.18dp (6.55px @ 3x, alpha=255).
  */
 internal class OrbitDotsView(ctx: Context, private val dotColor: Int = Live.ORANGE) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var phase = 0f
     private var anim: ValueAnimator? = null
+    private val order = intArrayOf(0, 1, 2)
+    private val xs = FloatArray(3)
+    private val ys = FloatArray(3)
+    private val rs = FloatArray(3)
+    private val depths = FloatArray(3)
 
     private fun start() {
         if (anim != null) return
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1500
+            duration = 1650
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
-            addUpdateListener {
-                phase = it.animatedValue as Float
-                invalidate()
-            }
+            addUpdateListener { invalidate() }
             start()
         }
     }
@@ -143,18 +146,37 @@ internal class OrbitDotsView(ctx: Context, private val dotColor: Int = Live.ORAN
 
     override fun onDraw(c: Canvas) {
         super.onDraw(c)
-        p.color = dotColor
+        val density = resources.displayMetrics.density
+        val now = SystemClock.uptimeMillis()
+        val twoPi = (2.0 * Math.PI).toFloat()
+        val orbitPhase = ((now % 1650L).toFloat() / 1650f) * twoPi
+        val tiltPhase = ((now % 3700L).toFloat() / 3700f) * twoPi
         val cx = width / 2f
         val cy = height / 2f
-        val rx = width * 0.34f
-        val ry = height * 0.20f
-        val twoPi = (2.0 * Math.PI).toFloat()
+        val rx = minOf(width * 0.37f, 7.0f * density)
+        val ryMax = minOf(height * 0.32f, 3.8f * density)
+        val ry = ryMax * sin(tiltPhase)
+        val rMin = 1.32f * density
+        val rSpan = 0.86f * density
         for (i in 0..2) {
-            // Gelombang kedua membuat gerak tidak seragam, tetap berulang mulus tiap putaran.
-            val a = phase * twoPi + i * twoPi / 3f + 0.7f * sin(phase * twoPi * 2f + i * 2.1f)
+            val baseAngle = orbitPhase + i * twoPi / 3f
+            val a = baseAngle + 0.38f * sin(baseAngle * 2f + i * 2.094f)
             val depth = 0.5f + 0.5f * sin(a) // 0 = di belakang, 1 = di depan
-            val r = height * (0.085f + 0.075f * depth)
-            c.drawCircle(cx + rx * cos(a), cy + ry * sin(a), r, p)
+            depths[i] = depth
+            xs[i] = cx + rx * cos(a)
+            ys[i] = cy + ry * sin(a)
+            rs[i] = rMin + rSpan * depth
+            order[i] = i
+        }
+        // Urutkan dari belakang (depth kecil) ke depan (depth besar) agar titik depan menutup titik belakang dengan bersih.
+        if (depths[order[0]] > depths[order[1]]) { val t = order[0]; order[0] = order[1]; order[1] = t }
+        if (depths[order[1]] > depths[order[2]]) { val t = order[1]; order[1] = order[2]; order[2] = t }
+        if (depths[order[0]] > depths[order[1]]) { val t = order[0]; order[0] = order[1]; order[1] = t }
+        for (idx in 0..2) {
+            val i = order[idx]
+            p.color = dotColor
+            p.alpha = (210 + (45f * depths[i]).toInt()).coerceIn(0, 255)
+            c.drawCircle(xs[i], ys[i], rs[i], p)
         }
     }
 }
@@ -650,55 +672,66 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
     private var availPx = 0 // lebar (px) yang tersedia untuk teks; dipakai memotong di batas kata
 
     private val iconSlot = FrameLayout(act)
-    // Gaya huruf live AI: lebih besar (18sp) dan tegas (bold-medium) dengan sapuan kilau kontras tinggi agar lebih mencolok dari teks lain.
+    // Gaya huruf 1:1 dengan video acuan: sans-serif proporsional ramping (NORMAL, bukan bold dan tanpa monospasi pada nama file),
+    // ukuran 17.5sp agar menonjol dari teks chat (16sp), serta sapuan kilau kontinu 2000ms (puncak 100% <-> lembah 30%).
     private val label = ShimmerText(act).apply {
         textSize = Live.TEXT_SIZE_SP
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        letterSpacing = 0.014f
+        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        letterSpacing = 0f
         shimmerBase = Live.LINE_BASE
         shimmerHi = Live.LINE_SHINE
-        shimmerMs = 1750L
+        shimmerMs = 2000L
         setTextColor(Live.LINE_TEXT)
         haloColor = Live.LINE_HALO
-        haloDy = act.dp(1).toFloat()
-        setPadding(0, act.dp(2), 0, act.dp(2)) // ruang untuk bayangan; sama dengan oldLabel agar tidak bergeser saat pudar-silang
+        haloDy = 0f
+        setPadding(0, act.dp(1), 0, act.dp(1))
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         alpha = 0f
         setShimmer(false)
     }
 
-    // Teks lama yang memudar di tempat yang sama saat teks berganti (pudar-silang, tanpa bergeser).
+    // Teks lama yang memudar di posisi yang sama saat teks berganti; ditempatkan sebagai overlay agar tidak mendorong panah '>'.
     private val oldLabel = TextView(act).apply {
         textSize = Live.TEXT_SIZE_SP
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        letterSpacing = 0.014f
+        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        letterSpacing = 0f
         setTextColor(Live.LINE_BASE)
-        setPadding(0, act.dp(2), 0, act.dp(2))
+        setPadding(0, act.dp(1), 0, act.dp(1))
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         alpha = 0f
     }
-    private val textBox = FrameLayout(act).apply {
-        addView(oldLabel, FrameLayout.LayoutParams(WRAP, WRAP))
-        addView(label, FrameLayout.LayoutParams(WRAP, WRAP))
+    private val chevron = IconView(act, IconView.CHEVRON, Live.LINE_CHEVRON).apply {
+        visibility = View.INVISIBLE
+        alpha = 0f
     }
-    private val chevron = IconView(act, IconView.CHEVRON, Live.LINE_CHEVRON)
 
-    // Tanpa kartu, tanpa latar, tanpa garis: hanya ikon + teks + panah di atas latar chat. Panah menempel di ujung teks.
-    private val head = LinearLayout(act).apply {
+    // Baris aktif: iconSlot (28dp) + jarak 8dp + label + jarak 5dp + chevron (16dp), sesuai koordinat piksel video acuan.
+    private val activeRow = LinearLayout(act).apply {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = act.dp(44)
-        setPadding(act.dp(14), act.dp(6), act.dp(12), act.dp(6))
+        addView(iconSlot, LinearLayout.LayoutParams(act.dp(28), act.dp(24)))
+        addView(label, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = act.dp(8) })
+        addView(chevron, LinearLayout.LayoutParams(act.dp(16), act.dp(16)).apply { marginStart = act.dp(5) })
+    }
+
+    // Wadah kepala: saat awal berpikir hanya 3 titik mengorbit yang tampil; ketika teks status hadir, panah '>' menempel di ujung teks.
+    private val head = FrameLayout(act).apply {
+        minimumHeight = act.dp(42)
+        setPadding(act.dp(14), act.dp(5), act.dp(12), act.dp(5))
         background = null
-        addView(iconSlot, LinearLayout.LayoutParams(act.dp(36), act.dp(32)))
-        addView(textBox, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = act.dp(8) })
-        addView(chevron, LinearLayout.LayoutParams(act.dp(22), act.dp(22)).apply { marginStart = act.dp(6) })
+        addView(
+            oldLabel,
+            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                marginStart = act.dp(36)
+            }
+        )
+        addView(activeRow, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER_VERTICAL))
         setOnClickListener { toggle() }
         addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
-            // Sisakan ruang untuk ikon dan panah; teks yang kepanjangan dipotong dengan "…".
-            val avail = (r - l) - paddingLeft - paddingRight - act.dp(36) - act.dp(8) - act.dp(22) - act.dp(6)
+            // Sisakan ruang untuk ikon (28dp + 8dp) dan panah (5dp + 16dp); teks yang kepanjangan dipotong dengan "...".
+            val avail = (r - l) - paddingLeft - paddingRight - act.dp(28) - act.dp(8) - act.dp(5) - act.dp(16)
             availPx = avail
             if (avail > 0 && label.maxWidth != avail) post {
                 label.maxWidth = avail
@@ -721,6 +754,7 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
     // ---------------------------------------------------------- Teks dan ikon
 
     /** Satu baris penjelasan aktivitas. Teks sama diabaikan; perubahan beruntun ditahan agar tidak berkedip. */
+    @Suppress("UNUSED_PARAMETER")
     fun setLine(raw: String, kind: Int = KIND_DOTS) {
         if (finished) return
         val t = tidyLine(raw, 90)
@@ -737,39 +771,35 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
     private fun applyLine(t: String) = swapText(t)
 
     /**
-     * Ganti teks dengan pudar-silang di tempat yang sama: teks lama memudar sambil teks baru muncul, tanpa bergeser.
-     * Baris ini selalu "hidup": titik oranye terus mengorbit dan teks terus berkilau, juga setelah AI selesai atau berhenti.
+     * Ganti teks status 1:1 sesuai video `live_chat_streaming_ai-1`:
+     * - Saat teks pertama kali muncul setelah fase titik-saja (00:11.2), teks dan panah '>' memudar masuk bersama (160ms).
+     * - Saat teks berikutnya berganti (00:16.6, 00:25.7, 00:35.4, 00:45.3), teks langsung berganti bersih di tempat dalam 1 frame
+     *   tanpa bayangan ganda (`oldLabel` tetap kosong) sementara fase gelombang kilau (`ShimmerText`) terus berjalan mulus tanpa reset.
      */
     private fun swapText(t: String) {
         label.animate().cancel()
         oldLabel.animate().cancel()
+        chevron.animate().cancel()
+        oldLabel.alpha = 0f
+        oldLabel.text = ""
         val had = label.alpha > 0.05f && label.text.isNotEmpty()
-        if (had) {
-            oldLabel.text = label.text
-            oldLabel.alpha = label.alpha
-            // Teks lama hilang lebih dulu, teks baru menyusul sesaat kemudian: keduanya tidak sempat bertumpuk menjadi bayangan kabur.
-            oldLabel.animate().alpha(0f).setStartDelay(0L).setDuration(FADE_OUT_MS).start()
-        } else {
-            oldLabel.alpha = 0f // animasi sebelumnya dibatalkan di tengah jalan: jangan biarkan teks lama menempel dan menumpuk
-        }
         label.text = styled(fitToWidth(t))
         label.setShimmer(true)
         setIcon(KIND_DOTS, Live.ORANGE, true)
-        label.alpha = 0f
-        label.animate().alpha(1f).setStartDelay(if (had) FADE_IN_DELAY_MS else 0L).setDuration(FADE_IN_MS).start()
+        chevron.visibility = View.VISIBLE
+        if (!had) {
+            label.alpha = 0f
+            chevron.alpha = 0f
+            label.animate().alpha(1f).setDuration(FIRST_FADE_IN_MS).start()
+            chevron.animate().alpha(1f).setDuration(FIRST_FADE_IN_MS).start()
+        } else {
+            label.alpha = 1f
+            chevron.alpha = 1f
+        }
     }
 
-    /** Nama file (mis. ApkProvider.kt) tampil dengan huruf monospasi agar mudah dikenali; sisanya tetap huruf biasa. */
-    private fun styled(t: String): CharSequence {
-        val ranges = fileTokenRanges(t)
-        if (ranges.isEmpty()) return t
-        val sp = SpannableString(t)
-        for (r in ranges) {
-            sp.setSpan(TypefaceSpan("monospace"), r.first, r.last + 1, SPAN_FLAGS)
-            sp.setSpan(RelativeSizeSpan(0.95f), r.first, r.last + 1, SPAN_FLAGS)
-        }
-        return sp
-    }
+    /** Sesuai video acuan: seluruh baris memakai font sans-serif proporsional yang seragam. */
+    private fun styled(t: String): CharSequence = t
 
     /** Muat teks ke lebar yang tersedia: bila kepanjangan, dipotong di batas kata (bukan di tengah kata) dan diakhiri "…". */
     private fun fitToWidth(t: String): String {
@@ -788,8 +818,8 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
         } else {
             IconView(act, kind, tint).apply { working = kind == IconView.GEAR && breathe }
         }
-        val lp = if (kind == KIND_DOTS) FrameLayout.LayoutParams(act.dp(36), act.dp(24), Gravity.CENTER)
-        else FrameLayout.LayoutParams(act.dp(26), act.dp(26), Gravity.CENTER)
+        val lp = if (kind == KIND_DOTS) FrameLayout.LayoutParams(act.dp(28), act.dp(24), Gravity.CENTER)
+        else FrameLayout.LayoutParams(act.dp(22), act.dp(22), Gravity.CENTER)
         iconSlot.addView(v, lp)
         v.scaleX = 0.4f
         v.scaleY = 0.4f
@@ -823,20 +853,29 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
 
     // ---------------------------------------------------------- Siklus
 
-    /** Putaran baru: kosongkan semuanya dan mulai dari "berpikir". */
-    fun begin(firstText: String) {
+    /**
+     * Putaran baru: mulai dengan tiga titik terakota mengorbit saja tanpa teks dan tanpa panah '>'
+     * (1:1 sesuai detik 00:07..00:11 pada video `live_chat_streaming_ai-1`). Bila [firstText] diisi, langsung tampilkan.
+     */
+    fun begin(firstText: String = "") {
         ui.removeCallbacks(release)
         gate = TextGate(700L)
         finished = false
         iconKind = Int.MIN_VALUE
         label.animate().cancel()
         oldLabel.animate().cancel()
+        chevron.animate().cancel()
+        label.setShimmer(false)
         label.alpha = 0f
         oldLabel.alpha = 0f
         label.text = ""
+        oldLabel.text = ""
+        chevron.alpha = 0f
+        chevron.visibility = View.INVISIBLE
         setExpanded(open = false, animate = false)
         terminal.reset()
-        setLine(firstText, KIND_DOTS)
+        setIcon(KIND_DOTS, Live.ORANGE, true)
+        if (firstText.isNotBlank()) setLine(firstText, KIND_DOTS)
     }
 
     /** Hasil akhir: teks ringkasan menggantikan penjelasan, tetapi titik dan kilau tetap bergerak; panah tetap bisa dibuka. */
@@ -853,10 +892,14 @@ internal class LiveStatusLine(private val act: MainActivity) : LinearLayout(act)
         iconKind = Int.MIN_VALUE
         label.animate().cancel()
         oldLabel.animate().cancel()
+        chevron.animate().cancel()
         label.setShimmer(false)
         label.alpha = 0f
         oldLabel.alpha = 0f
         label.text = ""
+        oldLabel.text = ""
+        chevron.alpha = 0f
+        chevron.visibility = View.INVISIBLE
         stopBreathe()
         iconSlot.removeAllViews()
         setExpanded(open = false, animate = false)

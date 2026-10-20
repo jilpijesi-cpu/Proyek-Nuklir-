@@ -156,7 +156,11 @@ internal fun MainActivity.startWorker(
     }
     updateAction()
     askSkipped = false
-    setStatus(KIND_DOTS, "Sedang berpikir")
+    // Fase awal 00:07..00:11 sesuai video: mulai dengan tiga titik terakota mengorbit saja tanpa teks statis.
+    curKind = KIND_DOTS
+    curTitle = ""
+    curDetail = ""
+    curQuiet = false
     val t = Thread {
         try {
             agentLoop(msg, key, addUser, images)
@@ -294,27 +298,55 @@ internal fun MainActivity.agentLoop(
         }
         agentState = AgentState.CallingModel(turns)
         saveAgentCheckpoint(AgentCheckpoint(agentTaskId, userMsg, turns, "", "calling_model"))
-        val phase = if (first) "Menganalisis permintaan" else "Memproses hasil langkah"
-        setStatus(if (first) KIND_DOTS else IconView.GRID, phase)
+        val isFirstTurn = first
         first = false
+        val phase = if (isFirstTurn) "Menganalisis permintaan" else "Memproses hasil langkah"
+        if (!isFirstTurn) {
+            setStatus(KIND_DOTS, phase)
+        }
         compactIfNeeded(key)
         var wrote = false
         lastPartial = ""
-        // Status tunggu yang jujur: hanya muncul bila model benar-benar belum mengirim token setelah 1,8 detik.
-        val waitTask = Runnable {
-            if (busy && !cancelled && !wrote && curTitle == phase) setStatus(KIND_DOTS, "Menunggu respons model AI")
+        // Sesuai video live_chat_streaming_ai-1:
+        // - Putaran pertama diawali titik mengorbit saja tanpa teks.
+        // - Bila ada lampiran gambar, tampilkan "Memproses gambar" setelah jeda singkat (~450ms).
+        // - Bila model belum mengirim kalimat berpikir (thought/deskripsi) setelah ~1150ms, tampilkan fase analisis.
+        val imgTask = Runnable {
+            if (busy && !cancelled && !wrote && curTitle.isEmpty() && images.isNotEmpty()) {
+                setStatus(KIND_DOTS, "Memproses gambar")
+            }
         }
-        uiHandler.postDelayed(waitTask, 1800)
+        val phaseTask = Runnable {
+            if (busy && !cancelled && !wrote && (curTitle.isEmpty() || curTitle == "Memproses gambar")) {
+                setStatus(KIND_DOTS, phase)
+            }
+        }
+        val waitTask = Runnable {
+            if (busy && !cancelled && !wrote && curTitle == phase) {
+                setStatus(KIND_DOTS, "Menunggu respons model AI")
+            }
+        }
+        if (isFirstTurn) {
+            if (images.isNotEmpty()) uiHandler.postDelayed(imgTask, 450)
+            uiHandler.postDelayed(phaseTask, if (images.isNotEmpty()) 1150L else 900L)
+        }
+        uiHandler.postDelayed(waitTask, 2600)
         val turn = try {
             callModelRetry(
                 key,
                 onText = { t ->
                     lastPartial = t
-                    if (!wrote) {
-                        wrote = true
-                        setStatus(IconView.NEW, "Menulis jawaban")
+                    val visible = stripModelTags(t)
+                    if (visible.isBlank()) {
+                        // Model sedang menulis blok <think>/<thinking>: tampilkan kalimat penalaran terbaru di baris status live!
+                        extractThoughtStatus(t)?.let { setStatus(KIND_DOTS, it) }
+                    } else {
+                        if (!wrote) {
+                            wrote = true
+                            setStatus(KIND_DOTS, "Menulis jawaban")
+                        }
+                        streamUpdate(t)
                     }
-                    streamUpdate(t)
                 },
                 onFlush = {
                     lastPartial = ""
@@ -322,6 +354,8 @@ internal fun MainActivity.agentLoop(
                 }
             )
         } finally {
+            uiHandler.removeCallbacks(imgTask)
+            uiHandler.removeCallbacks(phaseTask)
             uiHandler.removeCallbacks(waitTask)
         }
         if (turn == null) {

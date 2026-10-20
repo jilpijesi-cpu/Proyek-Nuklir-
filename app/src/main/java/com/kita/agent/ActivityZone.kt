@@ -246,7 +246,7 @@ internal class ActivityZone(private val act: MainActivity) : LinearLayout(act) {
         attachInline()
         feed.clear()
         center.reset()
-        live.begin("Sedang berpikir")
+        live.begin("")
         checklist.render(emptyList())
         reveal()
     }

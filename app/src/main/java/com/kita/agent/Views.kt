@@ -155,8 +155,10 @@ class IconView(ctx: Context, t: Int, c: Int = Palette.TEXT_MAIN) : View(ctx) {
                 c.drawLine(cx - s * 0.04f, cy + s * 0.04f, cx + s * 0.26f, cy - s * 0.26f, p)
             }
             CHEVRON -> {
-                c.drawLine(cx - s * 0.1f, cy - s * 0.2f, cx + s * 0.1f, cy, p)
-                c.drawLine(cx + s * 0.1f, cy, cx - s * 0.1f, cy + s * 0.2f, p)
+                p.strokeWidth = 1.25f * resources.displayMetrics.density
+                val arm = s * 0.21f
+                c.drawLine(cx - arm * 0.5f, cy - arm, cx + arm * 0.5f, cy, p)
+                c.drawLine(cx + arm * 0.5f, cy, cx - arm * 0.5f, cy + arm, p)
             }
             TERMINAL -> {
                 p.strokeWidth = iconStroke
@@ -470,8 +472,8 @@ class ShimmerText(ctx: Context) : TextView(ctx) {
     var shimmerHi: Int = Palette.BRAND
         set(v) { field = v; shader = null; invalidate() }
 
-    /** Lama satu sapuan kilau (ms). */
-    var shimmerMs: Long = 1500L
+    /** Lama satu sapuan kilau (ms): 2000ms sesuai pengukuran siklus gelombang pada video acuan. */
+    var shimmerMs: Long = 2000L
 
     /**
      * Bayangan tipis tepat di bawah teks supaya teks putih tetap tegas di atas latar biru muda (0 = tanpa bayangan).
@@ -485,11 +487,15 @@ class ShimmerText(ctx: Context) : TextView(ctx) {
     private var haloShader: LinearGradient? = null
 
     fun setShimmer(v: Boolean) {
+        if (active == v) {
+            if (v && isAttachedToWindow && anim == null) startAnim()
+            return
+        }
         active = v
         shader = null
         if (v && isAttachedToWindow) {
             startAnim()
-        } else {
+        } else if (!v) {
             stopAnim()
             paint.shader = null
             invalidate()
@@ -497,12 +503,17 @@ class ShimmerText(ctx: Context) : TextView(ctx) {
     }
 
     private fun startAnim() {
+        if (anim?.isRunning == true) return
         anim?.cancel()
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = shimmerMs
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
-            addUpdateListener { t = it.animatedValue as Float; invalidate() }
+            addUpdateListener {
+                val period = shimmerMs.coerceAtLeast(1L)
+                t = ((android.os.SystemClock.uptimeMillis() % period).toFloat() / period.toFloat())
+                invalidate()
+            }
             start()
         }
     }
@@ -537,16 +548,19 @@ class ShimmerText(ctx: Context) : TextView(ctx) {
             paint.shader = keep
         }
         if (active && width > 0) {
-            val w = width.toFloat()
-            val bandW = maxOf(w * 0.75f, 170f * resources.displayMetrics.density)
-            val midColor = blendArgb(shimmerBase, shimmerHi, 0.55f)
+            // Gelombang kontinu berulang (REPEAT) sepanjang 267dp (800px @ 3x) yang bergeser mulus ke kanan tiap 2000ms:
+            // fase mengikuti jam sistem agar saat teks status berganti di tempat, gelombang kilau tidak melompat/reset.
+            val period = shimmerMs.coerceAtLeast(1L)
+            val phase = ((android.os.SystemClock.uptimeMillis() % period).toFloat() / period.toFloat())
+            val waveW = maxOf(width.toFloat() * 0.85f, 267f * resources.displayMetrics.density)
+            val midColor = blendArgb(shimmerBase, shimmerHi, 0.52f)
             val sh = shader ?: LinearGradient(
-                0f, 0f, bandW, 0f,
-                intArrayOf(shimmerBase, midColor, shimmerHi, midColor, shimmerBase),
-                floatArrayOf(0f, 0.28f, 0.5f, 0.72f, 1f),
-                Shader.TileMode.CLAMP
+                0f, 0f, waveW, 0f,
+                intArrayOf(shimmerHi, midColor, shimmerBase, midColor, shimmerHi),
+                floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f),
+                Shader.TileMode.REPEAT
             ).also { shader = it }
-            m.setTranslate(-bandW + t * (w + bandW * 1.35f), 0f)
+            m.setTranslate(phase * waveW, 0f)
             sh.setLocalMatrix(m)
             paint.shader = sh
         }

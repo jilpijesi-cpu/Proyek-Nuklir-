@@ -55,11 +55,13 @@ internal fun MainActivity.callOpenAI(key: String, onText: (String) -> Unit, onFl
     class Acc(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
     val accs = TreeMap<Int, Acc>()
     val buf = StringBuilder()
+    val thoughtBuf = StringBuilder()
     val rawNon = StringBuilder()
     var sawData = false
     var truncated = false
     var finished = false // [DONE] atau finish_reason: tanda stream selesai dengan benar
     var lastEmit = 0L
+    var lastThoughtEmit = 0L
 
     conn.inputStream.bufferedReader().use { r ->
         while (true) {
@@ -79,6 +81,15 @@ internal fun MainActivity.callOpenAI(key: String, onText: (String) -> Unit, onFl
             if (ch0?.optString("finish_reason") == "length") truncated = true
             if (ch0?.optString("finish_reason")?.isNotEmpty() == true) finished = true
             val delta = ch0?.optJSONObject("delta") ?: continue
+            val reasoning = str(delta, "reasoning_content").ifEmpty { str(delta, "reasoning") }
+            if (reasoning.isNotEmpty()) {
+                thoughtBuf.append(reasoning)
+                val now = System.currentTimeMillis()
+                if (now - lastThoughtEmit > 120) {
+                    extractThoughtStatus(thoughtBuf.toString())?.let { setStatus(KIND_DOTS, it) }
+                    lastThoughtEmit = now
+                }
+            }
             val t = str(delta, "content")
             if (t.isNotEmpty()) {
                 buf.append(t)
@@ -100,6 +111,7 @@ internal fun MainActivity.callOpenAI(key: String, onText: (String) -> Unit, onFl
                         val n = str(f, "name")
                         if (n.isNotEmpty()) a.name = n
                         a.args.append(str(f, "arguments"))
+                        extractStreamingToolDesc(a.args.toString())?.let { setStatus(KIND_DOTS, it) }
                     }
                 }
             }

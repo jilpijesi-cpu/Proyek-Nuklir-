@@ -58,8 +58,10 @@ internal fun MainActivity.callGemini(key: String, onText: (String) -> Unit, onFl
 
     val parts = JSONArray()
     val buf = StringBuilder()
+    val thoughtBuf = StringBuilder()
     var sig: String? = null
     var lastEmit = 0L
+    var lastThoughtEmit = 0L
     var blockReason = ""
     var finishReason = ""
 
@@ -92,6 +94,18 @@ internal fun MainActivity.callGemini(key: String, onText: (String) -> Unit, onFl
                 if (p.has("functionCall")) {
                     flushText()
                     parts.put(p)
+                    p.optJSONObject("functionCall")?.optJSONObject("args")?.optString("deskripsi")
+                        ?.let { tidyLine(it, 90) }
+                        ?.takeIf { it.length >= 6 }
+                        ?.let { setStatus(KIND_DOTS, it) }
+                } else if (p.has("text") && p.optBoolean("thought", false)) {
+                    thoughtBuf.append(p.getString("text"))
+                    if (p.has("thoughtSignature")) sig = p.getString("thoughtSignature")
+                    val now = System.currentTimeMillis()
+                    if (now - lastThoughtEmit > 120) {
+                        extractThoughtStatus(thoughtBuf.toString())?.let { setStatus(KIND_DOTS, it) }
+                        lastThoughtEmit = now
+                    }
                 } else if (p.has("text") && !p.optBoolean("thought", false)) {
                     buf.append(p.getString("text"))
                     if (p.has("thoughtSignature")) sig = p.getString("thoughtSignature")

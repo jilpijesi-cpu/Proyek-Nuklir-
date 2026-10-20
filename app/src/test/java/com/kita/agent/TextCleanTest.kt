@@ -40,4 +40,22 @@ class TextCleanTest {
         }
         assertEquals("Halo dunia", prev)
     }
+
+    @Test fun ekstrakStatusBerpikirLiveDariThoughtDanTag() {
+        val thought = "**Reviewing a screenshot of another AI assistant**\nMembaca detail laporan dekompilasi APK berbahaya.\nMenilai tanda-tanda malware dalam permintaan."
+        assertEquals(
+            "Menilai tanda-tanda malware dalam permintaan",
+            extractThoughtStatus(thought)
+        )
+        val tagged = "<thinking>Mempertimbangkan risiko penipuan sebelum menjawab."
+        assertEquals(
+            "Mempertimbangkan risiko penipuan sebelum menjawab",
+            extractThoughtStatus(tagged)
+        )
+    }
+
+    @Test fun ekstrakDeskripsiAlatSaatStreamJsonParsial() {
+        val partial = """{"deskripsi": "Membaca ApkProvider.kt", "command": "cat app/src"""
+        assertEquals("Membaca ApkProvider.kt", extractStreamingToolDesc(partial))
+    }
 }

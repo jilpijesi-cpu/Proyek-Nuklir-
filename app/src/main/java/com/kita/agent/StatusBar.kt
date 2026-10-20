@@ -21,12 +21,12 @@ internal fun MainActivity.buildStatusRow() {
         setTextColor(Live.LINE_TEXT)
         shimmerBase = Live.LINE_BASE
         shimmerHi = Live.LINE_SHINE
-        shimmerMs = 1750L
+        shimmerMs = 2000L
         haloColor = Live.LINE_HALO
-        haloDy = dp(1).toFloat()
-        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-        letterSpacing = 0.014f
-        setPadding(0, dp(2), 0, dp(2))
+        haloDy = 0f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+        letterSpacing = 0f
+        setPadding(0, dp(1), 0, dp(1))
         setSingleLine(true)
         ellipsize = TextUtils.TruncateAt.END
         setShimmer(false)
@@ -48,9 +48,9 @@ internal fun MainActivity.buildStatusRow() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(12), 0, dp(12))
-        addView(statusLead, LinearLayout.LayoutParams(dp(44), dp(28)))
+        addView(statusLead, LinearLayout.LayoutParams(dp(34), dp(22)))
         addView(statusTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
-        addView(statusChevron, LinearLayout.LayoutParams(dp(22), dp(22)))
+        addView(statusChevron, LinearLayout.LayoutParams(dp(16), dp(16)))
         setOnClickListener { toggleDetail() }
     }
     statusRoot = LinearLayout(this).apply {
@@ -102,11 +102,11 @@ internal fun MainActivity.setStatus(kind: Int, title: String, detail: String = "
             statusTitle.shimmerBase = Live.LINE_BASE
             statusTitle.shimmerHi = Live.LINE_SHINE
             if (kind == KIND_DOTS) {
-                statusLead.addView(OrbitDotsView(this, Live.ORANGE), FrameLayout.LayoutParams(dp(36), dp(24), Gravity.CENTER))
+                statusLead.addView(OrbitDotsView(this, Live.ORANGE), FrameLayout.LayoutParams(dp(28), dp(24), Gravity.CENTER))
             } else {
                 statusLead.addView(
                     IconView(this, kind, accentFor(kind)).apply { working = kind != IconView.CLOCK },
-                    FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER_VERTICAL)
+                    FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER_VERTICAL)
                 )
             }
             leadKind = kind

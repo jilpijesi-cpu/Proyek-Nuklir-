@@ -57,8 +57,10 @@ internal fun MainActivity.callAnthropic(key: String, onText: (String) -> Unit, o
     class Blk(val type: String, val id: String, val name: String, val json: StringBuilder = StringBuilder())
     val blocks = TreeMap<Int, Blk>()
     val buf = StringBuilder()
+    val thoughtBuf = StringBuilder()
     var truncated = false
     var lastEmit = 0L
+    var lastThoughtEmit = 0L
 
     conn.inputStream.bufferedReader().use { r ->
         while (true) {
@@ -76,6 +78,14 @@ internal fun MainActivity.callAnthropic(key: String, onText: (String) -> Unit, o
                 "content_block_delta" -> {
                     val d = chunk.optJSONObject("delta") ?: continue
                     when (d.optString("type")) {
+                        "thinking_delta" -> {
+                            thoughtBuf.append(str(d, "thinking"))
+                            val now = System.currentTimeMillis()
+                            if (now - lastThoughtEmit > 120) {
+                                extractThoughtStatus(thoughtBuf.toString())?.let { setStatus(KIND_DOTS, it) }
+                                lastThoughtEmit = now
+                            }
+                        }
                         "text_delta" -> {
                             buf.append(str(d, "text"))
                             val now = System.currentTimeMillis()
@@ -84,7 +94,13 @@ internal fun MainActivity.callAnthropic(key: String, onText: (String) -> Unit, o
                                 lastEmit = now
                             }
                         }
-                        "input_json_delta" -> blocks[chunk.optInt("index")]?.json?.append(str(d, "partial_json"))
+                        "input_json_delta" -> {
+                            val blk = blocks[chunk.optInt("index")]
+                            if (blk != null) {
+                                blk.json.append(str(d, "partial_json"))
+                                extractStreamingToolDesc(blk.json.toString())?.let { setStatus(KIND_DOTS, it) }
+                            }
+                        }
                     }
                 }
                 "message_delta" -> {

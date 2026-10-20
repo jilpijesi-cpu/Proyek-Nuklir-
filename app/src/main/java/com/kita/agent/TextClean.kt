@@ -34,3 +34,55 @@ private fun cleanSegment(p: String, last: Boolean): String {
     }
     return s
 }
+
+private val thinkInnerRe = Regex("<(?:think|thinking)(?:\\s[^>]*)?>([\\s\\S]*?)(?:</(?:think|thinking)\\s*>|$)", RegexOption.IGNORE_CASE)
+private val deskJsonRe = Regex(""""deskripsi"\s*:\s*"((?:\\.|[^"\\]){6,160})"""")
+
+/**
+ * Ambil satu kalimat status terbaru dari teks penalaran/berpikir model yang sedang mengalir
+ * (baik dari field `thought`/`thinking`/`reasoning_content` maupun isi blok `<think>...</think>`).
+ * Mengembalikan null bila belum ada kalimat utuh yang layak tampil (>= 8 karakter).
+ */
+internal fun extractThoughtStatus(raw: String): String? {
+    if (raw.isBlank()) return null
+    val source = if (raw.contains('<')) {
+        val matches = thinkInnerRe.findAll(raw).toList()
+        if (matches.isNotEmpty()) matches.last().groupValues[1] else return null
+    } else {
+        raw
+    }
+    val lines = source
+        .replace(Regex("```[\\s\\S]*?(?:```|$)"), " ")
+        .lines()
+        .map { line ->
+            line.trim()
+                .replace(Regex("^[#*\\-•>\\d.)\\s]+"), "")
+                .replace("**", "")
+                .replace("__", "")
+                .replace("`", "")
+                .trim()
+        }
+        .filter { it.length >= 8 }
+    if (lines.isEmpty()) return null
+    val latest = lines.last()
+    // Jika paragraf panjang terdiri dari beberapa kalimat, ambil kalimat terakhir yang sudah cukup jelas.
+    val sentences = latest.split(Regex("(?<=[.!?])\\s+"))
+        .map { it.trim().trimEnd('.', '!', '?', ':', ';', ',') }
+        .filter { it.length >= 8 }
+    val pick = sentences.lastOrNull() ?: latest
+    return tidyLine(pick, 90).takeIf { it.length >= 8 }
+}
+
+/**
+ * Ambil nilai `"deskripsi"` begitu selesai dikirim di dalam stream argumen JSON tool call,
+ * sehingga baris status live langsung menampilkan langkah AI bahkan sebelum argumen lainnya selesai mengalir.
+ */
+internal fun extractStreamingToolDesc(partialJson: String): String? {
+    val m = deskJsonRe.findAll(partialJson).lastOrNull() ?: return null
+    val unescaped = m.groupValues[1]
+        .replace("\\\"", "\"")
+        .replace("\\n", " ")
+        .replace("\\\\", "\\")
+        .trim()
+    return tidyLine(unescaped, 90).takeIf { it.length >= 6 }
+}
