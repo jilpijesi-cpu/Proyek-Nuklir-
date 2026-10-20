@@ -37,6 +37,9 @@ judul di bagian atas yang menjelaskan isinya.
 - ContextSummary.kt : prompt sistem, pemangkasan dan ringkasan riwayat
 - ChatHistory.kt    : simpan/baca history.json
 - Classify.kt, ApprovalDialog.kt, CommandLog.kt, CommandLogActivity.kt : klasifikasi risiko, dialog setuju, catatan perintah
+- SelfHealingEngine.kt      : deteksi crash, sanitasi rahasia, deteksi crash-loop, dan Root Cause Analysis berbasis bukti (murni, teruji)
+- SelfHealingController.kt  : checkpoint/backup, perlindungan perubahan lokal pengguna, batas percobaan (Retry Limit), validasi & rollback, artefak APK (murni, teruji)
+- SelfHealingIntegration.kt : integrasi Application UncaughtExceptionHandler, banner pemulihan relaunch, dialog persetujuan pengguna, dan panduan pemulihan Termux
 
 ## Jaringan / penyedia model
 - ModelCall.kt      : pemanggilan umum, ulangi saat gagal, stream

@@ -510,6 +510,10 @@ internal fun MainActivity.showSettings() {
     val logBtn = linkRow("Catatan perintah", "Riwayat eksekusi perintah terminal") {
         startActivity(Intent(this, CommandLogActivity::class.java))
     }
+    val selfHealBtn = linkRow("Self-Healing & Pemulihan", "Laporan crash, checkpoint stabil, dan panduan pemulihan") {
+        dialog?.dismiss()
+        showSelfHealingDialog()
+    }
     val reportBtn = linkRow("Salin laporan masalah", "Salin info diagnostik tanpa kredensial") { copyReport() }
 
     // Tombol Pilih model menyimpan sementara provider & key lalu membuka pemilih model
@@ -548,6 +552,7 @@ internal fun MainActivity.showSettings() {
         addView(fieldLabel("Instruksi tambahan"))
         addView(extra, LinearLayout.LayoutParams(MATCH, WRAP))
         addView(divider(), LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(10); bottomMargin = dp(4) })
+        addView(selfHealBtn)
         addView(logBtn)
         addView(reportBtn)
     }

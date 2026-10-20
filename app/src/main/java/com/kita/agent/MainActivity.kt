@@ -545,6 +545,7 @@ class MainActivity : Activity() {
 
         zone = ActivityZone(this)
         root.addView(topBar, LinearLayout.LayoutParams(MATCH, WRAP))
+        attachCrashRecoveryBannerIfPresent(root, insertIndex = 1)
         root.addView(center, LinearLayout.LayoutParams(MATCH, 0, 1f))
         attachRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         attachScroll = HorizontalScrollView(this).apply {
