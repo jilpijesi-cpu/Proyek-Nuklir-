@@ -19,20 +19,22 @@ internal fun MainActivity.readOld(path: String): String? {
     }
 }
 
-/** Perluas awalan ~ (tanda kutip pada perintah mencegah shell memperluasnya sendiri). */
+/** Perluas path relatif ke dalam ruang kerja aktif (~/workspaces/<nama>). */
 internal fun MainActivity.normPath(p: String): String {
     val t = p.trim()
+    val ws = workspaceAbsPath()
     return when {
         t == "~" -> termuxHome
         t.startsWith("~/") -> termuxHome + "/" + t.removePrefix("~/")
-        else -> t
+        t.startsWith("/") -> t
+        else -> "$ws/$t"
     }
 }
 
 internal fun MainActivity.sh(s: String) = "'" + s.replace("'", "'\\''") + "'"
 
 internal fun MainActivity.absPath(p: String): String =
-    if (p.startsWith("/")) p else (wdTarget(termuxHome) ?: termuxHome) + "/" + p
+    if (p.startsWith("/")) p else workspaceAbsPath() + "/" + p
 
 /** Salin file lama ke ~/.kita_bak sebelum ditimpa (simpan 50 terakhir). Null kalau file belum ada. */
 internal fun MainActivity.backupFile(path: String): String? {
@@ -80,21 +82,14 @@ internal fun MainActivity.undoWrite(path: String, bak: String, btn: TextView, la
         .show()
 }
 
-/** Path absolut folder kerja di Termux, atau null kalau memakai home. */
-internal fun MainActivity.wdTarget(home: String): String? {
-    val wd = workdir()
-    return when {
-        wd.isEmpty() || wd == "~" -> null
-        wd.startsWith("/") -> wd
-        wd.startsWith("~/") -> "$home/${wd.removePrefix("~/")}"
-        else -> "$home/$wd"
-    }
-}
+/** Path absolut folder ruang kerja aktif di Termux (~/workspaces/<nama>). Tidak pernah kembali ke ~/kita. */
+internal fun MainActivity.wdTarget(home: String): String? =
+    workspaceAbsolutePath(home, activeWorkspaceName())
 
-/** Awalan perintah yang pindah ke folder kerja yang dipilih di Pengaturan. */
+/** Awalan perintah yang pindah ke folder ruang kerja aktif. */
 internal fun MainActivity.cdPrefix(home: String): String {
     val target = wdTarget(home) ?: return ""
-    return "cd ${sh(target)} 2>/dev/null || { echo ${sh("Folder kerja tidak ditemukan: $target")}; exit 1; }; "
+    return "cd ${sh(target)} 2>/dev/null || { echo ${sh("Ruang kerja tidak ditemukan: $target")}; exit 1; }; "
 }
 
 /**

@@ -37,6 +37,8 @@ judul di bagian atas yang menjelaskan isinya.
 - ContextSummary.kt : prompt sistem, pemangkasan dan ringkasan riwayat
 - ChatHistory.kt    : simpan/baca history.json
 - Classify.kt, ApprovalDialog.kt, CommandLog.kt, CommandLogActivity.kt : klasifikasi risiko, dialog setuju, catatan perintah
+- WorkspacePolicy.kt        : validasi nama ruang kerja, pembuatan ~/workspaces/<nama> + git init, dan pembatas canonical path ruang kerja (murni, teruji)
+- SelfRepairPolicy.kt       : daftar eksplisit File Terlindung, branch self/<tanggal>-<ringkasan>, batas 5 percobaan via AgentGuard, penaikan versionCode, cadangan 3 APK, serta monitor boot ok (1 menit) & crash 2x (murni, teruji)
 - SelfHealingEngine.kt      : deteksi crash, sanitasi rahasia, deteksi crash-loop, dan Root Cause Analysis berbasis bukti (murni, teruji)
 - SelfHealingController.kt  : checkpoint/backup, perlindungan perubahan lokal pengguna, batas percobaan (Retry Limit), validasi & rollback, artefak APK (murni, teruji)
 - SelfHealingIntegration.kt : integrasi Application UncaughtExceptionHandler, banner pemulihan relaunch, dialog persetujuan pengguna, dan panduan pemulihan Termux

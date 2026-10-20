@@ -6,18 +6,23 @@ package com.kita.agent
 internal fun MainActivity.sysText(): String {
     sysOverride?.let { return it }
     val extra = prefs.getString("extra", "") ?: ""
+    val wsPath = workspaceAbsPath()
+    val wsDisplay = workspaceDisplayPath()
     var t = if (extra.isBlank()) baseSystem() else "${baseSystem()}\nInstruksi tambahan dari pengguna: $extra"
+    t += "\nRUANG KERJA AKTIF: $wsPath ($wsDisplay). Kamu HANYA boleh membaca, menulis, dan menjalankan perintah di dalam folder ruang kerja ini ($wsPath). " +
+        "DILARANG KERAS membaca, menulis, berpindah direktori (cd), atau mengakses path apa pun di luar ruang kerja ($wsPath), termasuk ~/kita, .., /, ~, \$HOME, .env, atau keystore."
     if (readOnlyMode()) {
         t += "\nMODE HANYA BACA aktif: jangan menulis, mengubah, atau menghapus apa pun. " +
             "Hanya baca dan analisis; kalau perlu perubahan, jelaskan saja usulannya."
     }
     if (draftMode() && !readOnlyMode() && !sandboxEnabled()) {
         t += "\nMODE SUSUN DULU: baca lampiran dan file proyek langsung (tanpa izin). Pahami permintaan, lalu susun dan tulis SEMUA perubahan kode dengan write_file " +
-            "(diizinkan otomatis, ada cadangan). Jangan menjalankan build atau perintah yang mengubah sistem sebelum semua kode selesai. " +
+            "(diizinkan otomatis, ada cadangan, kecuali file terlindung yang wajib persetujuan diff khusus). Jangan menjalankan build atau perintah yang mengubah sistem sebelum semua kode selesai. " +
             "Setelah selesai, jalankan build satu kali (pengguna akan diminta izin); bila gagal, baca errornya, perbaiki, lalu build lagi."
     }
     if (isAutonomous()) t += "\nMODE OTONOM: pengguna tidak perlu tahu detail teknis. Kerjakan sampai tujuan benar-benar tercapai: pilih sendiri alat dan caranya, jangan meminta izin, dan jangan menunggu jawaban. Coba pendekatan lain bila gagal. Akhiri hanya setelah tujuan terbukti tercapai, atau bila sudah mencoba beberapa pendekatan dan tetap mentok; lalu laporkan singkat dan jujur apa yang sudah dan belum tercapai."
     if (sandboxEnabled()) t += "\nMODE SANDBOX: run_command berjalan di dalam proot-distro (${sandboxConfig.distro}), bukan di Termux utama. Folder kerja: ${sandboxConfig.workdir}; tetap di dalamnya. Tidak ada akses /sdcard atau home Termux. Lampiran pengguna sudah disalin otomatis ke folder kerja dengan nama file yang sama. Jangan berasumsi alat build (JDK, Android SDK) sudah ada: cek dulu dengan perintah seperti java -version sebelum build. Perintah yang menyentuh jaringan selalu butuh persetujuan pengguna. Beberapa perintah (dd, mkfs, chmod -R, rm di luar workdir, dll.) diblokir. write_file tidak tersedia; tulis file lewat run_command."
+    if (selfRepairMode()) t += buildSelfRepairSystemPrompt(wsPath)
     if (apkReMode()) t += "\n$APK_RE_SYSTEM_PROMPT"
     if (taskBrief.isNotBlank()) t += "\nPemahaman tugas saat ini: $taskBrief. Patuhi ini; jika ternyata keliru, koreksi dulu sebelum bertindak."
     val progressCtx = formatTaskProgressContext(buildTaskProgressContext(taskBrief, runLog.steps))

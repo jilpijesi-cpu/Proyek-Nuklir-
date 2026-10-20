@@ -141,15 +141,11 @@ class MainActivity : Activity() {
 
     internal fun needsKey(): Boolean = preset(prov).fmt != "cli" && !cfgBase().startsWith("http://")
 
-    internal fun workdir(): String = (prefs.getString("workdir", "kita") ?: "kita").trim().trimEnd('/')
+    internal fun workdir(): String = workspaceRelativePath(activeWorkspaceName())
 
     internal fun baseSystem(): String {
         val wd = workdir()
-        val where = when {
-            wd.isEmpty() || wd == "~" -> "home Termux"
-            wd.startsWith("/") || wd.startsWith("~/") -> "folder kerja $wd"
-            else -> "folder kerja ~/$wd"
-        }
+        val where = "folder ruang kerja ~/$wd"
         return "Kamu asisten pengembang yang cerdas dan mandiri, bekerja di dalam aplikasi AgentApp. " +
             "Lingkunganmu: perintah berjalan di Termux (Android) dengan direktori kerja = $where; path relatif terhadap folder itu. " +
             "Alatmu: run_command, write_file, dan ask_user (bertanya ke pengguna lewat dialog). Isi 'deskripsi' tiap tool dengan kalimat singkat tentang langkahmu. " +
@@ -546,6 +542,7 @@ class MainActivity : Activity() {
         zone = ActivityZone(this)
         root.addView(topBar, LinearLayout.LayoutParams(MATCH, WRAP))
         attachCrashRecoveryBannerIfPresent(root, insertIndex = 1)
+        attachSelfRepairBootMonitor(root, insertIndex = 1)
         root.addView(center, LinearLayout.LayoutParams(MATCH, 0, 1f))
         attachRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         attachScroll = HorizontalScrollView(this).apply {
@@ -566,6 +563,7 @@ class MainActivity : Activity() {
         })
         applyResponsive()
         restoreHistory()
+        ensureWorkspaceReady()
 
         val perms = ArrayList<String>()
         perms.add("com.termux.permission.RUN_COMMAND")

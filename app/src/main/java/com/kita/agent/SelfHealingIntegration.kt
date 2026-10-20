@@ -55,6 +55,16 @@ internal object SelfHealingRuntime {
                         appVersion = verName,
                         sdkInt = Build.VERSION.SDK_INT
                     )
+                    // Jika aplikasi baru dipasang lewat Perbaiki Diri dan belum "boot ok", naikkan penghitung crash berturut-turut
+                    runCatching {
+                        val sp = ctx.getSharedPreferences("cfg", android.content.Context.MODE_PRIVATE)
+                        val pendingBranch = sp.getString(PREF_SELF_PENDING_BRANCH, "") ?: ""
+                        val bootOk = sp.getBoolean(PREF_SELF_BOOT_OK, false)
+                        if (pendingBranch.isNotBlank() && !bootOk) {
+                            val nextCount = sp.getInt(PREF_SELF_CRASH_COUNT, 0) + 1
+                            sp.edit().putInt(PREF_SELF_CRASH_COUNT, nextCount).commit()
+                        }
+                    }
                 } catch (_: Throwable) {
                     // Jangan pernah melempar exception baru di dalam UncaughtExceptionHandler
                 } finally {
@@ -340,7 +350,7 @@ internal fun MainActivity.showSelfHealingDialog(
     }
 
     // 5. Panduan Pemulihan Eksternal (Termux / Manual)
-    val guideText = buildExternalRecoveryGuide(workdir().ifBlank { "~/kita" })
+    val guideText = buildExternalRecoveryGuide(workspaceDisplayPath())
     val guideBox = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = rounded(Palette.FIELD, 14)

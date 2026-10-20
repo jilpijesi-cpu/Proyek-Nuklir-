@@ -30,6 +30,8 @@ internal fun MainActivity.newChat() {
     runLog.reset(System.currentTimeMillis())
     chatBox.removeAllViews()
     emptyState.visibility = View.VISIBLE
+    // Sesi chat baru selalu memakai ruang kerja tersimpan, tidak pernah kembali ke ~/kita
+    ensureWorkspaceReady()
 }
 
 internal fun MainActivity.voice() {

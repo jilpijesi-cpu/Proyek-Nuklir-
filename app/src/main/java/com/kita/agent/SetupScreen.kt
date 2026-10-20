@@ -98,7 +98,10 @@ internal fun MainActivity.showSetup() {
             runOnUiThread { renderSetup(box, steps) }
         }.start()
     }
-    dlg.setOnDismissListener { setupRecheck = null }
+    dlg.setOnDismissListener {
+        setupRecheck = null
+        ensureWorkspaceReady()
+    }
     dlg.show()
     dlg.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener { recheck() }
     setupRecheck = { recheck() }

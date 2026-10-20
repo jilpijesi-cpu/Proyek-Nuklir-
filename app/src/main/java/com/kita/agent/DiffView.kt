@@ -8,8 +8,12 @@ import android.text.style.ForegroundColorSpan
 // Tampilan diff file (hijau = tambah, merah = hapus).
 // Fungsi-fungsi di sini adalah ekstensi MainActivity (dipecah dari MainActivity.kt).
 
+/** Hasilkan tampilan diff lengkap tanpa pemotongan baris untuk persetujuan File Terlindung. */
+internal fun MainActivity.buildFullDiff(oldText: String, newText: String): Pair<CharSequence, String> =
+    buildDiff(oldText, newText, maxLines = Int.MAX_VALUE)
+
 /** Hasilkan tampilan diff berwarna dan ringkasannya ("+a −d"). */
-internal fun MainActivity.buildDiff(oldText: String, newText: String): Pair<CharSequence, String> {
+internal fun MainActivity.buildDiff(oldText: String, newText: String, maxLines: Int = 300): Pair<CharSequence, String> {
     val a = if (oldText.isEmpty()) emptyList<String>() else oldText.removeSuffix("\n").split("\n")
     val b = if (newText.isEmpty()) emptyList<String>() else newText.removeSuffix("\n").split("\n")
     var pre = 0
@@ -65,7 +69,7 @@ internal fun MainActivity.buildDiff(oldText: String, newText: String): Pair<Char
     var cut = 0
     for ((k, o) in ops.withIndex()) {
         if (!show[k]) { skipped++; continue }
-        if (lines >= 300) { cut++; continue }
+        if (lines >= maxLines) { cut++; continue }
         flushSkip()
         val st = out.length
         out.append(o.first).append(' ').append(o.second).append('\n')

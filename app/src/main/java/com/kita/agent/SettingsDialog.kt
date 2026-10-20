@@ -178,10 +178,38 @@ internal fun MainActivity.showSettings() {
         hint = "Nama model (contoh: gemini-2.5-flash)"
         inputType = InputType.TYPE_CLASS_TEXT
     }
-    val wdir = EditText(this).apply {
-        hint = "Folder kerja di Termux, contoh: kita"
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        setText(prefs.getString("workdir", "kita"))
+    val workspaceStatusText = TextView(this).apply {
+        text = "Ruang kerja aktif: ${activeWorkspaceName()} (${workspaceDisplayPath()})"
+        textSize = 13.5f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setTextColor(Palette.INK)
+    }
+    val switchWorkspaceBtn = TextView(this).apply {
+        text = "Ganti ruang kerja"
+        textSize = 13f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setTextColor(Palette.BRAND)
+        gravity = Gravity.CENTER
+        background = pressable(rounded(Color.WHITE, 12, Palette.DIVIDER))
+        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setOnClickListener {
+            confirmSwitchWorkspaceDialog {
+                workspaceStatusText.text = "Ruang kerja aktif: ${activeWorkspaceName()} (${workspaceDisplayPath()})"
+            }
+        }
+    }
+    val workspaceCard = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = rounded(Palette.FIELD, 14)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+        addView(workspaceStatusText, LinearLayout.LayoutParams(MATCH, WRAP))
+        addView(TextView(context).apply {
+            text = "Agen hanya diizinkan membaca dan menulis di dalam folder ruang kerja ini."
+            textSize = 12f
+            setTextColor(Palette.INK_SOFT)
+            setPadding(0, dp(2), 0, dp(8))
+        })
+        addView(switchWorkspaceBtn, LinearLayout.LayoutParams(WRAP, WRAP))
     }
     val extra = EditText(this).apply {
         hint = "Instruksi tambahan untuk AI (opsional)"
@@ -190,7 +218,7 @@ internal fun MainActivity.showSettings() {
         gravity = Gravity.TOP
         setText(prefs.getString("extra", ""))
     }
-    for (f in listOf(base, mdl, wdir, extra)) styleField(f)
+    for (f in listOf(base, mdl, extra)) styleField(f)
 
     /** Header bagian (AI & Model, Eksekusi, Aplikasi, Lanjutan). */
     fun sectionHeader(title: String, subtitle: String? = null): View = LinearLayout(this).apply {
@@ -290,6 +318,11 @@ internal fun MainActivity.showSettings() {
     )
 
     // Bagian 4: Lanjutan (opsi berisiko tinggi & teknis)
+    val (selfRepairRow, selfRepairSw) = toggleRow(
+        "Mode Perbaiki Diri",
+        "Izinkan agen mengubah kode aplikasi di branch self/<tanggal>-<ringkasan> dengan pengaman ketat",
+        prefs.getBoolean(PREF_SELF_REPAIR_MODE, false)
+    )
     val (autonomousRow, autonomous) = toggleRow(
         "Mode otonom",
         "Jalankan perintah & pasang APK tanpa bertanya (berisiko)",
@@ -510,6 +543,17 @@ internal fun MainActivity.showSettings() {
     val logBtn = linkRow("Catatan perintah", "Riwayat eksekusi perintah terminal") {
         startActivity(Intent(this, CommandLogActivity::class.java))
     }
+    val rollbackApkBtn = linkRow("Kembali ke versi sebelumnya", "Pasang ulang APK cadangan (maksimal 3 versi terakhir)") {
+        dialog?.dismiss()
+        restorePreviousApkVersion()
+    }
+    val bootState = loadSelfRepairBootState()
+    val mergeMainBtn = if (bootState.canMergeToMain) {
+        linkRow("Gabungkan ke main (${bootState.pendingBranch})", "Versi baru sudah berjalan stabil (boot ok)") {
+            dialog?.dismiss()
+            mergeSelfBranchToMain(bootState.pendingBranch)
+        }
+    } else null
     val selfHealBtn = linkRow("Self-Healing & Pemulihan", "Laporan crash, checkpoint stabil, dan panduan pemulihan") {
         dialog?.dismiss()
         showSelfHealingDialog()
@@ -545,13 +589,14 @@ internal fun MainActivity.showSettings() {
         addView(mdl, LinearLayout.LayoutParams(MATCH, WRAP))
         addView(baseLabel)
         addView(base, LinearLayout.LayoutParams(MATCH, WRAP))
-        addView(fieldLabel("Folder kerja di Termux"))
-        addView(wdir, LinearLayout.LayoutParams(MATCH, WRAP))
+        addView(selfRepairRow)
         addView(autonomousRow)
         addView(apkReRow)
         addView(fieldLabel("Instruksi tambahan"))
         addView(extra, LinearLayout.LayoutParams(MATCH, WRAP))
         addView(divider(), LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(10); bottomMargin = dp(4) })
+        mergeMainBtn?.let { addView(it) }
+        addView(rollbackApkBtn)
         addView(selfHealBtn)
         addView(logBtn)
         addView(reportBtn)
@@ -710,13 +755,14 @@ internal fun MainActivity.showSettings() {
             .putString("p_${cur}_base", base.text.toString().trim())
             .putString("p_${cur}_model", mdl.text.toString().trim())
             .putString("extra", extra.text.toString().trim())
-            .putString("workdir", wdir.text.toString().trim())
+            .putString("workdir", workspaceRelativePath(activeWorkspaceName()))
             .putBoolean("autoread", auto.isChecked)
             .putBoolean("draft", draftSw.isChecked)
             .putBoolean("understand", understandSw.isChecked)
             .putBoolean("readonly", ro.isChecked)
             .putBoolean("sandbox", sandbox.isChecked)
             .putBoolean("apk_re", apkRe.isChecked)
+            .putBoolean(PREF_SELF_REPAIR_MODE, selfRepairSw.isChecked)
         if (encryptedKey.isSuccess) {
             ed.putString("p_${cur}_key", encryptedKey.getOrThrow())
         } else {
@@ -765,9 +811,10 @@ internal fun MainActivity.showSettings() {
         addView(loginStatus)
         addView(loginBtn, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
 
-        // 2. BAGIAN EKSEKUSI
+        // 2. BAGIAN EKSEKUSI & RUANG KERJA
         addView(divider(), LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(16) })
-        addView(sectionHeader("2. Eksekusi", "Terminal Termux, isolasi sandbox, dan izin perintah"))
+        addView(sectionHeader("2. Ruang Kerja & Eksekusi", "Folder ruang kerja terisolasi, Termux, dan izin perintah"))
+        addView(workspaceCard, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4); bottomMargin = dp(6) })
         addView(roRow)
         addView(autoRow)
         addView(sandboxRow)

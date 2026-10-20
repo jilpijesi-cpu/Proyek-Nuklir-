@@ -289,6 +289,7 @@ internal fun MainActivity.agentLoop(
     var lastOutSig = ""
     var prevOutSig = ""
     val errTracker = ErrorTracker()
+    val selfRepairGuard = SelfRepairRetryGuard(MAX_SELF_REPAIR_ATTEMPTS)
     var verifyNudges = 0
     while (true) {
         if (cancelled) throw Cancelled()
@@ -406,6 +407,7 @@ internal fun MainActivity.agentLoop(
         }
         val results = ArrayList<Pair<Call, String>>()
         var repeatStop = false
+        var selfRepairExhaustedReport: String? = null
         for (c in turn.calls) {
             if (cancelled) throw Cancelled()
             agentState = AgentState.RunningTool(c.name)
@@ -440,6 +442,7 @@ internal fun MainActivity.agentLoop(
             val seen = errTracker.record(out)
             var forModel = condenseFailure(out)
             val isDeniedOrBlocked = out.startsWith("Ditolak", ignoreCase = true) || out.startsWith("Diblokir", ignoreCase = true)
+            val isGradleVerify = c.name == "run_command" && (command.contains("gradlew") || command.contains("gradle "))
             if (!structured.ok || isDeniedOrBlocked) {
                 val retryable = retryPolicy(c.name, command, structured)
                 val hint = when (structured.errorKind) {
@@ -453,6 +456,30 @@ internal fun MainActivity.agentLoop(
                 forModel += "\n\n[Kategori error: ${obstaclePlan.errorKind}. $hint]" +
                     formatObstacleGuidance(obstaclePlan, seen.coerceAtLeast(1))
                 saveAgentCheckpoint(AgentCheckpoint(agentTaskId, userMsg, turns, c.name, "tool_failed", obstaclePlan.errorKind.name))
+                if (selfRepairMode() && isGradleVerify && !isDeniedOrBlocked) {
+                    val isTestCmd = command.contains("testDebugUnitTest") || command.contains("test")
+                    val decision = selfRepairGuard.recordBuildTestAttempt(
+                        unitTestPassed = !isTestCmd,
+                        assemblePassed = isTestCmd,
+                        rawOutput = out
+                    )
+                    when (decision) {
+                        is SelfRepairAttemptDecision.RetryAllowed -> {
+                            forModel += "\n\n" + decision.obstacleGuidance
+                        }
+                        is SelfRepairAttemptDecision.Exhausted -> {
+                            selfRepairExhaustedReport = decision.failureReport
+                            logSelfRepairCycle(
+                                userRequest = userMsg,
+                                branch = "self/gagal",
+                                buildAndTestResult = decision.failureReport,
+                                commitHash = "",
+                                ok = false
+                            )
+                        }
+                        is SelfRepairAttemptDecision.Passed -> {}
+                    }
+                }
             } else if (verifyKind != VerificationKind.NONE) {
                 forModel += "\n\n[Verifikasi yang disarankan: ${verifyKind.name}. Pastikan hasil nyata sebelum menyatakan selesai.]"
             }
@@ -465,6 +492,10 @@ internal fun MainActivity.agentLoop(
         lastOutSig = results.joinToString("\n") { it.second }
         synchronized(hist) { hist.add(Hist(2, results = results)) }
         saveHist()
+        if (selfRepairExhaustedReport != null) {
+            stopWithNote(selfRepairExhaustedReport!!)
+            return
+        }
         if (repeatStop) {
             stopWithNote("Berhenti: error yang sama muncul $STOP_SAME_ERROR_AT kali. Beri arahan lain atau coba model lain.")
             return
